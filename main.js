@@ -11,7 +11,10 @@ const { app, BrowserWindow, ipcMain, dialog, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-// Hardware Acceleration, WebGPU, and sRGB Profile Alignment
+// Spoof a modern Chrome desktop User-Agent to bypass Google/Microsoft OAuth blocks
+const REAL_CHROME_USER_AGENT = 
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
+
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('enable-unsafe-webgpu');
 app.commandLine.appendSwitch('enable-features', 'Vulkan,WebGPU');
@@ -19,7 +22,17 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
 const PERSISTENT_SESSION_PARTITION = 'persist:sentinel_ai_workspace';
 
-function configurePartitionHeaders(targetSession) {
+function configureSessionSecurity(targetSession) {
+  // 1. Force modern Chrome User-Agent across all outbound requests
+  targetSession.setUserAgent(REAL_CHROME_USER_AGENT);
+
+  // 2. Grant permissions for file uploads, clipboard parsing, notifications, and mic
+  targetSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    const allowed = ['clipboard-read', 'clipboard-sanitized-write', 'media', 'notifications', 'openExternal'];
+    callback(allowed.includes(permission));
+  });
+
+  // 3. Strip X-Frame-Options and relax Content-Security-Policy
   const filter = { urls: ['*://*/*'] };
   targetSession.webRequest.onHeadersReceived(filter, (details, callback) => {
     const responseHeaders = { ...details.responseHeaders };
@@ -42,8 +55,8 @@ function configurePartitionHeaders(targetSession) {
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    width: 1520,
+    height: 940,
     minWidth: 1200,
     minHeight: 768,
     backgroundColor: '#06234D',
@@ -51,19 +64,42 @@ function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      webviewTag: true,
+      webviewTag: true, // Enables <webview>
       preload: path.join(__dirname, 'preload.js'),
     },
   });
 
   mainWindow.setMenuBarVisibility(false);
 
-  configurePartitionHeaders(session.defaultSession);
+  configureSessionSecurity(session.defaultSession);
   const aiWorkspaceSession = session.fromPartition(PERSISTENT_SESSION_PARTITION);
-  configurePartitionHeaders(aiWorkspaceSession);
+  configureSessionSecurity(aiWorkspaceSession);
 
-  // Directly load the single-file HTML compiled by viteSingleFile
-  mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+  // Handle SSO and Login Popups so they inherit the persistent partition
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        width: 600,
+        height: 750,
+        autoHideMenuBar: true,
+        webPreferences: {
+          partition: PERSISTENT_SESSION_PARTITION,
+          contextIsolation: true,
+          nodeIntegration: false,
+        }
+      }
+    };
+  });
+
+  const targetHtml = path.join(__dirname, 'dist', 'index.html');
+  const fallbackHtml = path.join(__dirname, 'index.html');
+
+  if (fs.existsSync(targetHtml)) {
+    mainWindow.loadFile(targetHtml);
+  } else {
+    mainWindow.loadFile(fallbackHtml);
+  }
 
   return mainWindow;
 }
