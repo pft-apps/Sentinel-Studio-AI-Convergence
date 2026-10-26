@@ -41,6 +41,7 @@ export interface MultiAiStore {
   activePaneId: string | null;
   broadcastPrompt: string;
   syncOnSend: boolean;
+  autoSubmit: boolean;
   lastActiveTimestamp: number;
 }
 
@@ -151,6 +152,7 @@ class MultiAiHubManager {
             activePaneId: parsed.activePaneId || parsed.panes[0]?.id || null,
             broadcastPrompt: parsed.broadcastPrompt || '',
             syncOnSend: parsed.syncOnSend !== false,
+            autoSubmit: parsed.autoSubmit !== false,
             lastActiveTimestamp: Date.now(),
           };
         }
@@ -197,6 +199,7 @@ class MultiAiHubManager {
       activePaneId: 'pane_copilot',
       broadcastPrompt: '',
       syncOnSend: true,
+      autoSubmit: true,
       lastActiveTimestamp: Date.now(),
     };
   }
@@ -217,6 +220,7 @@ class MultiAiHubManager {
         activePaneId: this.state.activePaneId,
         broadcastPrompt: this.state.broadcastPrompt,
         syncOnSend: this.state.syncOnSend,
+        autoSubmit: this.state.autoSubmit,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
     } catch (e) {
@@ -496,12 +500,10 @@ class MultiAiHubManager {
     this.state.broadcastPrompt = promptText;
     this.saveState();
 
-    // 1. Copy to clipboard
-    navigator.clipboard.writeText(promptText).then(() => {
-      this.showToast('⚡ Prompt copied to clipboard! Paste into your AI subscriptions with Ctrl+V');
-    }).catch(() => {
-      this.showToast('Prompt staged. Paste with Ctrl+V into your browser windows.');
-    });
+    const isDesktop = typeof (window as any).sentinelDesktop !== 'undefined' && !!(window as any).sentinelDesktop.isDesktop;
+
+    // 1. Copy to clipboard for easy manual fallback or browser mode
+    navigator.clipboard.writeText(promptText).catch(() => {});
 
     // 2. Pulse effect on all panes
     this.state.panes.forEach((p) => {
@@ -514,27 +516,162 @@ class MultiAiHubManager {
       }
     });
 
-    // 3. If running in Electron with <webview>, attempt direct insertion
-    const isDesktop = typeof (window as any).sentinelDesktop !== 'undefined' && !!(window as any).sentinelDesktop.isDesktop;
+    // 3. Desktop Automation: Inject text into ChatGPT, Gemini, Copilot, Claude, Perplexity and auto-submit
     if (isDesktop) {
+      let injectedCount = 0;
       this.state.panes.forEach((p) => {
         const webview = document.getElementById(`browser_frame_${p.id}`) as any;
         if (webview && typeof webview.executeJavaScript === 'function') {
-          // Attempt graceful script focus/insert
-          const script = `
-            (function() {
-              const activeInput = document.querySelector('textarea, div[contenteditable="true"], input[type="text"]');
-              if (activeInput) {
-                activeInput.focus();
-              }
-            })();
-          `;
-          try {
-            webview.executeJavaScript(script).catch(() => {});
-          } catch (_e) {}
+          injectedCount++;
+          const script = this.buildInjectionScript(p.serviceId, promptText, this.state.autoSubmit);
+          webview.executeJavaScript(script).catch((err: any) => {
+            console.warn(`[Multi-AI] Script injection error for ${p.serviceId}:`, err);
+          });
         }
       });
+
+      if (this.state.autoSubmit) {
+        this.showToast(`🚀 Auto-submitting prompt to ${injectedCount} AI browsers!`);
+      } else {
+        this.showToast(`📝 Filled prompt into ${injectedCount} AI browsers (ready for review).`);
+      }
+    } else {
+      // In Web Browser Preview mode:
+      this.showToast('⚡ Prompt copied to clipboard! In web preview, press Ctrl+V then Enter in each pane.');
     }
+  }
+
+  public toggleAutoSubmit(): void {
+    this.state.autoSubmit = !this.state.autoSubmit;
+    this.saveState();
+    const btn = document.getElementById('multiAiAutoSubmitToggleBtn');
+    if (btn) {
+      btn.className = `px-2.5 py-1 rounded-xl text-[10px] font-bold border transition flex items-center gap-1.5 cursor-pointer ${
+        this.state.autoSubmit
+          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-400 dark:border-emerald-600/50'
+          : 'bg-gray-100 dark:bg-intel-850 text-gray-500 dark:text-slate-400 border-gray-300 dark:border-intel-border'
+      }`;
+      btn.innerHTML = `<span>${this.state.autoSubmit ? '🟢' : '⚪'}</span><span>Auto-Send: ${this.state.autoSubmit ? 'ON' : 'OFF'}</span>`;
+    }
+    this.showToast(
+      this.state.autoSubmit
+        ? '⚡ Auto-Submit enabled: Prompt will be injected and submitted directly in desktop station'
+        : 'Auto-Submit disabled: Prompt will be filled into inputs only'
+    );
+  }
+
+  private buildInjectionScript(serviceId: string, promptText: string, autoSubmit: boolean): string {
+    const jsonPrompt = JSON.stringify(promptText);
+    const jsonService = JSON.stringify(serviceId);
+    return `
+      (function() {
+        try {
+          const text = ${jsonPrompt};
+          const autoSend = ${autoSubmit};
+          const sId = ${jsonService};
+
+          function setVal(elem, str) {
+            if (!elem) return false;
+            elem.focus();
+            if (elem.tagName === 'TEXTAREA' || elem.tagName === 'INPUT') {
+              const proto = elem.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+              const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+              if (setter) {
+                setter.call(elem, str);
+              } else {
+                elem.value = str;
+              }
+              elem.dispatchEvent(new Event('input', { bubbles: true }));
+              elem.dispatchEvent(new Event('change', { bubbles: true }));
+              return true;
+            }
+            if (elem.isContentEditable) {
+              document.execCommand('selectAll', false, null);
+              document.execCommand('insertText', false, str);
+              elem.dispatchEvent(new Event('input', { bubbles: true }));
+              return true;
+            }
+            return false;
+          }
+
+          let input = null;
+
+          if (sId === 'chatgpt') {
+            input = document.querySelector('textarea#prompt-textarea') ||
+                    document.querySelector('div#prompt-textarea') ||
+                    document.querySelector('div[contenteditable="true"]');
+          } else if (sId === 'gemini') {
+            input = document.querySelector('rich-textarea .ql-editor') ||
+                    document.querySelector('div[contenteditable="true"][aria-label*="prompt"]') ||
+                    document.querySelector('textarea[aria-label*="prompt"]') ||
+                    document.querySelector('div.textarea[contenteditable="true"]');
+          } else if (sId === 'copilot') {
+            input = document.querySelector('textarea#userInput') ||
+                    document.querySelector('textarea[aria-label*="Ask"]') ||
+                    document.querySelector('div[contenteditable="true"]');
+            if (!input) {
+              const cib = document.querySelector('cib-serp');
+              const bar = cib?.shadowRoot?.querySelector('cib-action-bar');
+              input = bar?.shadowRoot?.querySelector('textarea#searchbox') ||
+                      bar?.shadowRoot?.querySelector('cib-text-input')?.shadowRoot?.querySelector('textarea');
+            }
+          } else if (sId === 'claude') {
+            input = document.querySelector('div.ProseMirror[contenteditable="true"]') ||
+                    document.querySelector('fieldset textarea');
+          } else if (sId === 'perplexity') {
+            input = document.querySelector('textarea[placeholder*="Ask"]') ||
+                    document.querySelector('textarea');
+          } else {
+            input = document.querySelector('textarea, div[contenteditable="true"], input[type="text"]');
+          }
+
+          if (input) {
+            setVal(input, text);
+
+            if (autoSend) {
+              setTimeout(() => {
+                let btn = null;
+                if (sId === 'chatgpt') {
+                  btn = document.querySelector('button[data-testid="send-button"]') ||
+                        document.querySelector('button[aria-label*="Send"]');
+                } else if (sId === 'gemini') {
+                  btn = document.querySelector('button[aria-label*="Send prompt"]') ||
+                        document.querySelector('button.send-button');
+                } else if (sId === 'copilot') {
+                  btn = document.querySelector('button[aria-label="Submit"]') ||
+                        document.querySelector('button[aria-label="Send"]');
+                  if (!btn) {
+                    const cib = document.querySelector('cib-serp');
+                    const bar = cib?.shadowRoot?.querySelector('cib-action-bar');
+                    btn = bar?.shadowRoot?.querySelector('button[aria-label*="Submit"]');
+                  }
+                } else if (sId === 'claude') {
+                  btn = document.querySelector('button[aria-label="Send Message"]') ||
+                        document.querySelector('button[aria-label="Send"]');
+                } else if (sId === 'perplexity') {
+                  btn = document.querySelector('button[aria-label="Submit"]') ||
+                        document.querySelector('button.bg-super');
+                }
+
+                if (btn && !btn.disabled) {
+                  btn.click();
+                } else {
+                  input.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Enter',
+                    code: 'Enter',
+                    keyCode: 13,
+                    which: 13,
+                    bubbles: true
+                  }));
+                }
+              }, 350);
+            }
+          }
+        } catch (e) {
+          console.warn('[Sentinel Multi-AI Injection Error]', e);
+        }
+      })();
+    `;
   }
 
   public insertPresetPrompt(text: string): void {
@@ -709,24 +846,39 @@ class MultiAiHubManager {
               >${this.state.broadcastPrompt}</textarea>
             </div>
 
-            <div class="flex flex-col gap-1.5 shrink-0">
+            <div class="flex items-center gap-1.5 shrink-0 flex-wrap">
+              <button
+                id="multiAiAutoSubmitToggleBtn"
+                type="button"
+                class="px-2.5 py-1 rounded-xl text-[10px] font-bold border transition flex items-center gap-1.5 cursor-pointer ${
+                  this.state.autoSubmit
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-400 dark:border-emerald-600/50'
+                    : 'bg-gray-100 dark:bg-intel-850 text-gray-500 dark:text-slate-400 border-gray-300 dark:border-intel-border'
+                }"
+                title="When ON: Automatically types and clicks Send in desktop station browsers. When OFF: Fills inputs only."
+              >
+                <span>${this.state.autoSubmit ? '🟢' : '⚪'}</span>
+                <span>Auto-Send: ${this.state.autoSubmit ? 'ON' : 'OFF'}</span>
+              </button>
+
               <button
                 id="multiAiBroadcastSendBtn"
                 type="button"
-                class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
-                title="Broadcast prompt & copy to clipboard to paste into all active browsers"
+                class="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
+                title="Broadcast prompt to all active AI browser panes"
               >
                 <span class="text-sm">⚡</span>
                 <span>Broadcast to All</span>
               </button>
+
               <button
                 id="multiAiCopyPromptBtn"
                 type="button"
-                class="px-3 py-1 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-intel-850 dark:hover:bg-intel-800 text-gray-800 dark:text-slate-200 border border-gray-300 dark:border-intel-border text-[11px] font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
-                title="Copy prompt text only"
+                class="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-intel-850 dark:hover:bg-intel-800 text-gray-800 dark:text-slate-200 border border-gray-300 dark:border-intel-border text-[11px] font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
+                title="Copy prompt text to clipboard"
               >
                 <span>📋</span>
-                <span>Copy Only</span>
+                <span>Copy</span>
               </button>
             </div>
           </div>
@@ -988,6 +1140,9 @@ class MultiAiHubManager {
 
     const broadcastSendBtn = document.getElementById('multiAiBroadcastSendBtn');
     if (broadcastSendBtn) broadcastSendBtn.onclick = () => this.broadcastPrompt();
+
+    const autoSubmitBtn = document.getElementById('multiAiAutoSubmitToggleBtn');
+    if (autoSubmitBtn) autoSubmitBtn.onclick = () => this.toggleAutoSubmit();
 
     const copyPromptBtn = document.getElementById('multiAiCopyPromptBtn');
     if (copyPromptBtn) {
