@@ -11956,18 +11956,31 @@ export function setDispatchTarget(target: 'local' | 'copilot' | 'chatgpt' | 'gem
   state.dispatchTarget = target;
   if (target === 'copilot' || target === 'chatgpt' || target === 'gemini') {
     state.activeExternalEngine = target;
+    if (typeof (window as any).setSingleActiveEngine === 'function') {
+      (window as any).setSingleActiveEngine(target);
+    }
   }
   updateDispatchBarUI();
   updateMultiAiHeaderControls();
   if (target !== 'local') {
     openMultiAiWorkspace(target === 'broadcast' ? undefined : target);
-    if (target !== 'broadcast') {
+    if (target === 'broadcast') {
+      if (typeof (window as any).setMultiAiViewMode === 'function') {
+        (window as any).setMultiAiViewMode('grid');
+      }
+    } else {
       const promptInput = document.getElementById('promptInput') as HTMLTextAreaElement | null;
       const textToCopy = promptInput?.value?.trim() || '';
       if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
         navigator.clipboard.writeText(textToCopy).catch(() => {});
       }
       showToast('[ Prompt Copied for Enterprise AI Session ]', 'success');
+
+      // Dispatch Hook: Route focus to native webview (copilotWebview, chatgptWebview, geminiWebview)
+      const targetWv = document.getElementById(`${target}Webview`) as any;
+      if (targetWv && typeof targetWv.focus === 'function') {
+        try { targetWv.focus(); } catch (_e) {}
+      }
     }
   }
   const label = target === 'local' ? 'Local Edge Engine' : target === 'broadcast' ? 'Broadcast All' : target.toUpperCase();
@@ -12141,10 +12154,11 @@ export function renderMultiAiWorkspacePanes() {
           </div>
           <div class="flex-1 relative w-full h-full bg-white">
             <webview
+              id="${engKey}Webview"
               src="${cfg.url}"
               partition="persist:sentinel_ai_workspace"
-              allowpopups
-              webpreferences="contextIsolation=yes"
+              allowpopups="true"
+              webpreferences="contextIsolation=yes, allowRunningInsecureContent=no"
               class="w-full h-full border-0"
               style="width: 100%; height: 100%; display: flex;"
             ></webview>
@@ -12397,6 +12411,34 @@ export function dispatchPromptToExternalEngines(prompt: string, targets: Array<'
   targets.forEach((engKey) => {
     state.externalSessions[engKey].lastPrompt = prompt;
     state.externalSessions[engKey].isLoading = true;
+
+    // Dispatch Hook: Route prompt & focus to native webview (copilotWebview, chatgptWebview, geminiWebview)
+    const webviewId = `${engKey}Webview`;
+    const webviewEl = document.getElementById(webviewId) as any;
+    if (webviewEl) {
+      try {
+        if (typeof webviewEl.focus === 'function') {
+          webviewEl.focus();
+        }
+        if (typeof webviewEl.executeJavaScript === 'function') {
+          const safePrompt = JSON.stringify(prompt);
+          webviewEl.executeJavaScript(`
+            (function() {
+              const el = document.querySelector('textarea, [contenteditable="true"], input[type="text"]');
+              if (el) {
+                el.focus();
+                if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+                  el.value = ${safePrompt};
+                  el.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+              }
+            })();
+          `).catch(() => {});
+        }
+      } catch (err) {
+        console.warn(`[Webview Dispatch Hook] ${webviewId}:`, err);
+      }
+    }
   });
 
   renderMultiAiWorkspacePanes();

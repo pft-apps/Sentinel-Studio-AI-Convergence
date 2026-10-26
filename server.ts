@@ -77,6 +77,65 @@ app.post('/api/request-activation', async (req: Request, res: Response) => {
   });
 });
 
+// Multi-AI Subscription Catalog & Station Metadata
+app.get('/api/multi-ai/services', (_req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    services: [
+      {
+        id: 'copilot',
+        name: 'Microsoft Copilot',
+        category: 'Enterprise / M365',
+        url: 'https://copilot.microsoft.com/',
+        authType: 'Microsoft Account / Entra ID (Work & School)',
+        supportedModels: ['GPT-4o', 'Copilot Vision', 'Think Deeper'],
+        description: 'Web search, M365 grounding, corporate enterprise data protection under commercial license',
+        partition: 'persist:sentinel_copilot',
+      },
+      {
+        id: 'gemini',
+        name: 'Google Gemini',
+        category: 'Google Workspace & Research',
+        url: 'https://gemini.google.com/',
+        authType: 'Google Account / Google Workspace',
+        supportedModels: ['Gemini 2.5 Pro', 'Gemini 2.0 Flash', 'Deep Research'],
+        description: 'Google ecosystem integration, multimodal reasoning, code execution, Drive/Docs grounding',
+        partition: 'persist:sentinel_gemini',
+      },
+      {
+        id: 'chatgpt',
+        name: 'OpenAI ChatGPT',
+        category: 'GPT Plus & Team',
+        url: 'https://chatgpt.com/',
+        authType: 'OpenAI Account / Google / Microsoft SSO',
+        supportedModels: ['GPT-4o', 'o1', 'o3-mini', 'Canvas'],
+        description: 'Flagship conversational intelligence, Advanced Data Analysis, Canvas editor, Custom GPTs',
+        partition: 'persist:sentinel_chatgpt',
+      },
+      {
+        id: 'claude',
+        name: 'Anthropic Claude',
+        category: 'Extended Thinking & Code',
+        url: 'https://claude.ai/',
+        authType: 'Anthropic Account / Google SSO',
+        supportedModels: ['Claude 3.7 Sonnet', 'Claude 3.5 Haiku'],
+        description: 'Artifacts live preview, hybrid reasoning, nuanced prose and legal/audit analysis',
+        partition: 'persist:sentinel_claude',
+      },
+      {
+        id: 'perplexity',
+        name: 'Perplexity AI',
+        category: 'Citations & Deep Search',
+        url: 'https://www.perplexity.ai/',
+        authType: 'Perplexity Account / SSO',
+        supportedModels: ['Sonar Large', 'Deep Research'],
+        description: 'Real-time citation verification, academic search, web intelligence synthesis',
+        partition: 'persist:sentinel_perplexity',
+      },
+    ],
+  });
+});
+
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');

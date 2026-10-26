@@ -10,7 +10,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sentinel Studio AI Convergence - Portable</title>
+  <title>Sentinel Studio AI Convergence - Portable — Enterprise Multi-AI Capability Hub</title>
 
   <!-- Flash Prevention (FOUC): synchronous Chrome / System theme resolution before paint -->
   <script>
@@ -166,214 +166,7 @@
         }
       };
 
-      // 3. Multi-AI Workstation State & Global Handlers (Step 3: Executive Station)
-      window.multiAiState = window.multiAiState || {
-        viewMode: 'split',
-        activeSingleEngine: 'copilot',
-        engines: ['local', 'copilot', 'chatgpt', 'gemini']
-      };
-
-      window.setMultiAiViewMode = function(mode) {
-        if (!['single', 'split', 'grid'].includes(mode)) return;
-        window.multiAiState.viewMode = mode;
-
-        // 1. Update View Switcher Button Highlights
-        const buttons = {
-          single: document.getElementById('multiAiViewSingleBtn'),
-          split: document.getElementById('multiAiViewSplitBtn'),
-          grid: document.getElementById('multiAiViewGridBtn')
-        };
-        const activeClasses = ['bg-[#003886]', 'text-white', 'shadow-sm', 'border-[#00C4E7]/40'];
-        const inactiveClasses = ['bg-transparent', 'text-slate-300', 'hover:bg-white/10', 'border-transparent'];
-
-        Object.entries(buttons).forEach(([key, btn]) => {
-          if (!btn) return;
-          if (key === mode) {
-            btn.classList.add(...activeClasses);
-            btn.classList.remove(...inactiveClasses);
-          } else {
-            btn.classList.remove(...activeClasses);
-            btn.classList.add(...inactiveClasses);
-          }
-        });
-
-        // 2. Adjust Grid Layout
-        const container = document.getElementById('multiAiPanelsGrid');
-        const singleSelector = document.getElementById('singleEngineSelectorBar');
-        if (!container) return;
-        container.classList.remove('grid-cols-1', 'grid-cols-2', 'grid-cols-3', 'grid-cols-4', 'md:grid-cols-2', 'xl:grid-cols-4');
-
-        const panels = {
-          local: document.getElementById('pane_local'),
-          copilot: document.getElementById('pane_copilot'),
-          chatgpt: document.getElementById('pane_chatgpt'),
-          gemini: document.getElementById('pane_gemini')
-        };
-
-        if (mode === 'single') {
-          container.classList.add('grid-cols-1');
-          if (singleSelector) singleSelector.classList.remove('hidden');
-          const activeEng = window.multiAiState.activeSingleEngine || 'copilot';
-          Object.entries(panels).forEach(([engKey, el]) => {
-            if (!el) return;
-            el.classList.toggle('hidden', engKey !== activeEng);
-            el.classList.toggle('flex', engKey === activeEng);
-          });
-        } else if (mode === 'split') {
-          container.classList.add('grid-cols-1', 'xl:grid-cols-2');
-          if (singleSelector) singleSelector.classList.add('hidden');
-          if (panels.local) { panels.local.classList.remove('hidden'); panels.local.classList.add('flex'); }
-          if (panels.copilot) { panels.copilot.classList.remove('hidden'); panels.copilot.classList.add('flex'); }
-          if (panels.chatgpt) { panels.chatgpt.classList.add('hidden'); panels.chatgpt.classList.remove('flex'); }
-          if (panels.gemini) { panels.gemini.classList.add('hidden'); panels.gemini.classList.remove('flex'); }
-        } else if (mode === 'grid') {
-          container.classList.add('grid-cols-1', 'md:grid-cols-2', 'xl:grid-cols-4');
-          if (singleSelector) singleSelector.classList.add('hidden');
-          Object.values(panels).forEach(el => {
-            if (el) { el.classList.remove('hidden'); el.classList.add('flex'); }
-          });
-        }
-      };
-
-      window.setSingleActiveEngine = function(engineKey) {
-        window.multiAiState.activeSingleEngine = engineKey;
-        const engButtons = {
-          local: document.getElementById('singleEngBtn_local'),
-          copilot: document.getElementById('singleEngBtn_copilot'),
-          chatgpt: document.getElementById('singleEngBtn_chatgpt'),
-          gemini: document.getElementById('singleEngBtn_gemini')
-        };
-        Object.entries(engButtons).forEach(([key, btn]) => {
-          if (!btn) return;
-          if (key === engineKey) {
-            btn.className = 'px-2.5 py-1 rounded-md bg-[#003886] text-white border border-[#00C4E7]/40 shadow-xs font-bold cursor-pointer';
-          } else {
-            btn.className = 'px-2.5 py-1 rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer font-medium';
-          }
-        });
-
-        const trayBadge = document.getElementById('synthesisTargetEngineBadge');
-        if (trayBadge) {
-          const names = { local: 'Local Edge', copilot: 'Copilot', chatgpt: 'ChatGPT', gemini: 'Gemini' };
-          trayBadge.textContent = `${names[engineKey] || engineKey} Session Active`;
-        }
-
-        if (window.multiAiState.viewMode === 'single') {
-          window.setMultiAiViewMode('single');
-        }
-      };
-
-      // Synthesis & Adoption Ribbon Action Handlers (Section 4)
-      window.importToNotepad = function(textToImport) {
-        let content = textToImport;
-        if (!content) {
-          const activeEng = window.multiAiState?.activeSingleEngine || 'copilot';
-          const activeRespEl = document.querySelector(`#pane_${activeEng} .pane-response-text`);
-          if (activeRespEl) {
-            content = activeRespEl.getAttribute('data-raw') || activeRespEl.innerText || activeRespEl.textContent;
-          }
-        }
-        if (!content && window.state && window.state.externalSessions) {
-          const activeEng = window.state.activeExternalEngine || 'copilot';
-          content = window.state.externalSessions[activeEng]?.lastResponse || '';
-        }
-        if (!content) {
-          content = `### 🔷 Multi-AI Synthesis Observation Memorandum\n**Governance Finding:** DOA Approval Threshold Review\nUnder DOA Policy Section 4.2.1, single vendor commitments exceeding $50,000 USD require dual executive sign-off.\n- Total Unapproved Requisition: **$145,300 USD** across 3 consecutive orders.\n- Immediate Recommendation: Retrospective ManCom approval and ERP threshold lock.`;
-        }
-
-        // Open Notepad side-panel immediately
-        const workDeskPanel = document.getElementById('workDeskPanel');
-        if (workDeskPanel) workDeskPanel.classList.remove('hidden');
-        if (typeof window.openWorkDesk === 'function') {
-          window.openWorkDesk();
-        } else if (typeof window.Ln === 'function') {
-          window.Ln(true);
-        }
-
-        // Ensure Notepad view is active
-        const notepadView = document.getElementById('deskNotepadWorkspaceView');
-        const studioView = document.getElementById('deskAgentStudioView');
-        if (notepadView) notepadView.classList.remove('hidden');
-        if (studioView) studioView.classList.add('hidden');
-
-        const editor = document.getElementById('workDeskEditor');
-        const canvas = document.getElementById('workDeskCanvasEditor');
-        if (editor) editor.value = content;
-        if (canvas) canvas.innerHTML = window.marked ? window.marked.parse(content) : content;
-
-        // Trigger live word counters
-        if (typeof window.updateWorkDeskMetrics === 'function') {
-          window.updateWorkDeskMetrics();
-        } else {
-          const words = content.trim() ? content.trim().split(/\s+/).length : 0;
-          const chars = content.length;
-          const wEl = document.getElementById('workDeskWordsCount');
-          const cEl = document.getElementById('workDeskCharsCount');
-          if (wEl) wEl.textContent = `${words} words`;
-          if (cEl) cEl.textContent = `${chars} chars`;
-        }
-
-        if (typeof window.showToast === 'function') {
-          window.showToast('📥 [ Deliverable Imported to Notepad ]', 'success');
-        }
-      };
-
-      window.synthesizeBest = function() {
-        const synthesisPrompt = "Compare these findings, identify consensus points, and highlight policy discrepancies or DOA thresholds.";
-        const promptInput = document.getElementById('promptInput');
-        if (promptInput) {
-          promptInput.value = synthesisPrompt;
-          if (typeof window.autoResizeTextarea === 'function') window.autoResizeTextarea();
-        }
-        if (typeof window.setDispatchTarget === 'function') {
-          window.setDispatchTarget('local');
-        }
-        if (typeof window.synthesizeBestEngines === 'function') {
-          window.synthesizeBestEngines();
-        } else if (typeof window.sendMessage === 'function') {
-          window.sendMessage();
-        }
-        if (typeof window.showToast === 'function') {
-          window.showToast('⚡ [ Multi-Engine Synthesis Dispatched ]', 'info');
-        }
-      };
-
-      window.distillToMemoryHub = async function(ruleText) {
-        let rule = ruleText;
-        if (!rule) {
-          const activeEng = window.multiAiState?.activeSingleEngine || 'copilot';
-          const activeRespEl = document.querySelector(`#pane_${activeEng} .pane-response-text`);
-          const txt = activeRespEl ? (activeRespEl.getAttribute('data-raw') || activeRespEl.innerText) : '';
-          if (txt && (txt.includes('50,000') || txt.includes('DOA') || txt.includes('threshold'))) {
-            rule = 'DOA Policy Rule: Any purchase orders issued to the same vendor within 72 hours exceeding $50,000 USD cumulative require dual-approval from the Department Head and Financial Controller.';
-          } else {
-            rule = 'DOA Policy Rule: Requisitions issued to the same vendor within a rolling 7-day period must be cumulatively evaluated against the $50,000 USD threshold to eliminate artificial unbundling.';
-          }
-        }
-
-        try {
-          if (typeof window.addMemoryRecord === 'function') {
-            await window.addMemoryRecord({
-              category: 'Policy Rule',
-              content: rule,
-              confidence: 'Verified',
-              isActive: true,
-              isPinned: true
-            });
-          } else if (typeof window.distillEngineResponseToMemoryHub === 'function') {
-            window.distillEngineResponseToMemoryHub();
-            return;
-          }
-        } catch (e) {
-          console.warn('Memory vault commit fallback:', e);
-        }
-
-        if (typeof window.showToast === 'function') {
-          window.showToast('🧠 [ Rule Stored to Memory Vault ]', 'success');
-        }
-      };
-
-      // Desktop Runtime Indicator & Native <webview> Mount Hook
+      // Desktop Runtime Indicator Hook
       document.addEventListener('DOMContentLoaded', function() {
         if (isDesktop) {
           const badge = document.getElementById('desktopStatusIndicator');
@@ -381,30 +174,6 @@
             badge.classList.remove('hidden');
             badge.classList.add('flex');
           }
-
-          // Mount native <webview> instances in desktop mode with persist:sentinel_ai_workspace
-          const webviewConfigs = [
-            { id: 'copilotWebview', parentId: 'pane_copilot_webview_container', src: 'https://copilot.microsoft.com' },
-            { id: 'chatgptWebview', parentId: 'pane_chatgpt_webview_container', src: 'https://chatgpt.com' },
-            { id: 'geminiWebview', parentId: 'pane_gemini_webview_container', src: 'https://gemini.google.com' }
-          ];
-
-          webviewConfigs.forEach(cfg => {
-            const container = document.getElementById(cfg.parentId);
-            if (container) {
-              container.innerHTML = `
-                <webview 
-                  id="${cfg.id}" 
-                  src="${cfg.src}" 
-                  partition="persist:sentinel_ai_workspace" 
-                  allowpopups 
-                  webpreferences="contextIsolation=yes"
-                  class="w-full h-full border-0"
-                  style="width: 100%; height: 100%; display: flex;">
-                </webview>
-              `;
-            }
-          });
         }
       });
     })();
@@ -412,9 +181,9 @@
   <meta name="author" content="Patrick Jay F. Tanap, CPA, CICA" />
   <meta name="copyright" content="Patrick Jay F. Tanap" />
   <meta name="application-name" content="Sentinel Studio" />
-  <meta name="description" content="Executive Multi-AI Workstation &amp; Knowledge OS with native session partitions, multi-engine dispatch, side-by-side synthesis grid, and persistent memory distillation." />
+  <meta name="description" content="Enterprise Capability Hub & Multi-AI Convergence Station with persistent browsers for Microsoft Copilot, Google Gemini, and ChatGPT by Patrick Jay F. Tanap, CPA, CICA." />
   <meta property="og:title" content="Sentinel Studio AI Convergence - Portable" />
-  <meta property="og:description" content="Executive Multi-AI Workstation &amp; Knowledge OS with native session partitions, multi-engine dispatch, side-by-side synthesis grid, and persistent memory distillation." />
+  <meta property="og:description" content="Enterprise Capability Hub & Multi-AI Convergence Station with persistent browsers for Microsoft Copilot, Google Gemini, and ChatGPT by Patrick Jay F. Tanap, CPA, CICA." />
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com" crossorigin="anonymous"></script>
@@ -1330,45 +1099,6 @@
       0% { opacity: 0; transform: translateY(10px) scale(0.9); }
       100% { opacity: 1; transform: translateY(0) scale(1); }
     }
-
-    /* ===================================================================== */
-    /* SECTION 5: STRICT BRANDING, ACCESSIBILITY & POKA-YOKE ENFORCEMENTS   */
-    /* ===================================================================== */
-    /* All interactive buttons enforce box-sizing */
-    button, [role="button"], .dispatch-target-btn, .view-mode-btn {
-      box-sizing: border-box !important;
-    }
-
-    /* All toggle switches strictly locked to eliminate thumb circle protrusion */
-    [role="switch"] {
-      min-width: 44px !important;
-      max-width: 44px !important;
-      height: 24px !important;
-      min-height: 24px !important;
-      padding: 2px !important;
-      overflow: hidden !important;
-      box-sizing: border-box !important;
-    }
-
-    /* Privacy Modal "Acknowledge" button high-contrast visibility */
-    html:not(.dark) #closePrivacyModalBtn {
-      background-color: #003886 !important;
-      color: #FFFFFF !important;
-    }
-    html:not(.dark) #closePrivacyModalBtn svg,
-    html:not(.dark) #closePrivacyModalBtn * {
-      stroke: #FFFFFF !important;
-      color: #FFFFFF !important;
-    }
-    html.dark #closePrivacyModalBtn {
-      background-color: #00C4E7 !important;
-      color: #06234D !important;
-    }
-    html.dark #closePrivacyModalBtn svg,
-    html.dark #closePrivacyModalBtn * {
-      stroke: #06234D !important;
-      color: #06234D !important;
-    }
   </style>
 </head>
 
@@ -1557,16 +1287,18 @@
       </div>
     </div>
 
-      <!-- Multi-AI Workstation Header Trigger Button -->
-      <button id="toggleMultiAiBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#003886] hover:bg-[#06234D] text-white border border-[#00C4E7]/60 transition text-xs font-bold shadow-xs cursor-pointer" title="Toggle Executive Multi-AI & Knowledge OS Workstation">
-        <span>🌐</span>
-        <span class="hidden sm:inline">Multi-AI Station</span>
-      </button>
-
+    <div class="flex items-center gap-2.5">
       <!-- Work Desk Header Trigger Button -->
       <button id="toggleWorkDeskBtn" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition text-xs font-bold shadow-xs cursor-pointer" title="Toggle Interactive Work Desk">
         <span>🗂️</span>
         <span class="hidden sm:inline">Work Desk</span>
+      </button>
+
+      <!-- Multi-AI Convergence Hub Trigger Button -->
+      <button id="toggleMultiAiBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-indigo-500 text-white transition text-xs font-bold shadow-xs cursor-pointer" title="Multi-AI Hub: Run multiple browsers (ChatGPT, Copilot, Gemini) simultaneously">
+        <span class="text-sm">🌐</span>
+        <span class="hidden sm:inline">Multi-AI Hub</span>
+        <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-white/25 font-mono font-black">NEW</span>
       </button>
 
       <!-- 3-Way Theme Selector (Light, Dark, System / Browser Default) -->
@@ -1641,10 +1373,19 @@
     <aside id="sidebar" class="w-80 border-r flex flex-col transition-all duration-300 z-10 shrink-0">
       
       <!-- New Chat -->
-      <div class="p-3 border-b border-intel-border">
+      <div class="p-3 border-b border-intel-border space-y-2">
         <button id="newChatBtn" class="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 border border-blue-500/40 rounded-xl text-xs font-semibold text-white flex items-center justify-center gap-2 transition shadow-sm">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
           New Intelligence Session
+        </button>
+
+        <!-- Multi-AI Workstation Sidebar Quick Trigger -->
+        <button id="sidebarMultiAiBtn" class="w-full py-2 px-3 bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 hover:from-purple-100 hover:to-indigo-100 dark:bg-gradient-to-r dark:from-purple-950/40 dark:via-indigo-950/40 dark:to-blue-950/40 dark:hover:from-purple-900/50 dark:hover:to-indigo-900/50 border border-purple-300 dark:border-purple-800/60 rounded-xl text-xs font-bold text-purple-800 dark:text-purple-300 flex items-center justify-between transition shadow-2xs cursor-pointer" title="Open Multi-AI Convergence Workstation">
+          <span class="flex items-center gap-2">
+            <span>🌐</span>
+            <span>Multi-AI Workstation</span>
+          </span>
+          <span class="text-[9px] px-2 py-0.5 rounded-full bg-purple-600 text-white font-mono font-bold">Copilot • Gemini • GPT</span>
         </button>
       </div>
 
@@ -1813,50 +1554,7 @@
           </div>
         </div>
 
-        <div id="promptBar" class="relative max-w-3xl mx-auto">
-          <!-- MULTI-TARGET ENGINE DISPATCH BAR (Step 3: Executive Workstation Dispatch) -->
-          <div id="engineDispatchBar" class="mb-2.5 flex items-center justify-between gap-2 flex-wrap">
-            <div class="flex items-center bg-gray-100 dark:bg-[#03142c] p-1 rounded-2xl border border-gray-300 dark:border-slate-700/60 text-xs shadow-xs gap-1 select-none">
-              <span class="text-[10px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-slate-400 px-2 select-none hidden sm:inline">Dispatch:</span>
-              
-              <button id="dispatchTargetLocal" type="button" onclick="window.setDispatchTarget ? window.setDispatchTarget('local') : null" class="dispatch-target-btn px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-[#003886] text-white shadow-xs border border-[#00C4E7]/40 ring-1 ring-[#00C4E7]/30" data-target="local" title="Run prompt exclusively via on-device Local Edge Neural Engine (WebGPU/LiteRT)">
-                <span>⚡</span>
-                <span>Local Edge</span>
-              </button>
-              
-              <button id="dispatchTargetCopilot" type="button" onclick="window.setDispatchTarget ? window.setDispatchTarget('copilot') : null" class="dispatch-target-btn px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer text-slate-400 hover:bg-white/10" data-target="copilot" title="Dispatch to Microsoft Copilot Enterprise Pane">
-                <span class="text-[#0078D4]">🔷</span>
-                <span>Copilot</span>
-              </button>
-
-              <button id="dispatchTargetChatgpt" type="button" onclick="window.setDispatchTarget ? window.setDispatchTarget('chatgpt') : null" class="dispatch-target-btn px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer text-slate-400 hover:bg-white/10" data-target="chatgpt" title="Dispatch to OpenAI ChatGPT Pane">
-                <span class="text-[#10A37F]">🟢</span>
-                <span>ChatGPT</span>
-              </button>
-
-              <button id="dispatchTargetGemini" type="button" onclick="window.setDispatchTarget ? window.setDispatchTarget('gemini') : null" class="dispatch-target-btn px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer text-slate-400 hover:bg-white/10" data-target="gemini" title="Dispatch to Google Gemini Advanced Pane">
-                <span class="text-[#1A73E8]">🔵</span>
-                <span>Gemini</span>
-              </button>
-
-              <button id="dispatchTargetBroadcast" type="button" onclick="window.setDispatchTarget ? window.setDispatchTarget('broadcast') : null" class="dispatch-target-btn px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer text-slate-400 hover:bg-white/10" data-target="broadcast" title="Broadcast prompt simultaneously to Local Edge and all External AI Panes in Synthesis Grid">
-                <span>🌐</span>
-                <span>Broadcast All</span>
-              </button>
-            </div>
-
-            <div class="flex items-center gap-1.5">
-              <span id="dispatchActiveStatusBadge" class="text-[10px] px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60 font-mono font-bold flex items-center gap-1.5 shadow-2xs">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span id="dispatchActiveStatusText">Local Edge Active</span>
-              </span>
-              <button id="quickOpenStationBtn" type="button" class="text-[11px] px-2.5 py-1 rounded-xl bg-gray-200 hover:bg-gray-300 dark:bg-intel-850 dark:hover:bg-intel-800 text-gray-800 dark:text-slate-200 font-semibold border border-gray-300 dark:border-intel-border transition flex items-center gap-1 cursor-pointer" title="Toggle Multi-AI Workstation Panes">
-                <span>◫</span>
-                <span class="hidden sm:inline">Station Panes</span>
-              </button>
-            </div>
-          </div>
-
+        <div class="relative max-w-3xl mx-auto">
           <!-- Floating Autocomplete Suggestion Popup (Anchored directly above #promptInput) -->
           <div
             id="capabilitiesAutocompletePopup"
@@ -1953,349 +1651,10 @@
       </div>
     </main>
 
-    <!-- MULTI-AI WORKSPACE RESIZER -->
-    <div id="multiAiResizer" class="hidden w-1.5 hover:w-2 bg-theme-border hover:bg-[#00C4E7] cursor-col-resize transition-all z-20 shrink-0"></div>
-
-    <!-- EXECUTIVE MULTI-AI & KNOWLEDGE OS WORKSTATION CONTAINER (Step 3) -->
-    <aside id="multiAiWorkspaceContainer" class="hidden w-full lg:w-[50%] bg-white dark:bg-[#06234D] border-l border-gray-200 dark:border-cyan-500/30 flex flex-col z-10 shrink-0 transition-all duration-150">
-      <!-- Workstation Header -->
-      <div class="p-3 border-b border-gray-200 dark:border-cyan-500/20 bg-gray-50 dark:bg-[#03142c] flex flex-wrap items-center justify-between gap-2.5 shrink-0 select-none">
-        <div class="flex items-center gap-2 min-w-0">
-          <div class="w-7 h-7 rounded-lg bg-[#003886] border border-[#00C4E7]/60 flex items-center justify-center text-sm text-[#00C4E7] shadow shrink-0">
-            🌐
-          </div>
-          <div class="truncate">
-            <div class="flex items-center gap-1.5">
-              <h3 class="text-xs font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-1.5 truncate">
-                Executive Multi-AI Workstation
-              </h3>
-              <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-[#003886] text-[#00C4E7] border border-[#00C4E7]/40 font-mono font-bold shrink-0">v3.0</span>
-            </div>
-            <p class="text-[10px] text-gray-500 dark:text-slate-300 truncate">Native Session Partitions • Synthesis Grid • Memory Distillation</p>
-          </div>
-        </div>
-
-        <!-- View Mode Segmented Controls (Section 3) -->
-        <div class="inline-flex items-center p-1 bg-[#03142c] rounded-xl border border-slate-700/60 text-xs select-none">
-          <button type="button" id="multiAiViewSingleBtn" onclick="window.setMultiAiViewMode('single')" class="px-3 py-1.5 rounded-lg font-medium transition cursor-pointer border border-transparent text-slate-300 hover:bg-white/10" title="Maximized Single View: Full view of active selected engine">Single View</button>
-          <button type="button" id="multiAiViewSplitBtn" onclick="window.setMultiAiViewMode('split')" class="px-3 py-1.5 rounded-lg font-medium transition cursor-pointer border border-[#00C4E7]/40 bg-[#003886] text-white shadow-sm" title="Split Compare View: 50/50 comparison comparing Local Edge with selected Engine">Split Compare</button>
-          <button type="button" id="multiAiViewGridBtn" onclick="window.setMultiAiViewMode('grid')" class="px-3 py-1.5 rounded-lg font-medium transition cursor-pointer border border-transparent text-slate-300 hover:bg-white/10" title="Executive Synthesis Grid: Side-by-side evaluation matrix across all engines">Synthesis Grid</button>
-        </div>
-
-        <!-- Backward-compatibility alias buttons -->
-        <button id="viewModeSplitBtn" type="button" class="hidden" onclick="window.setMultiAiViewMode('split')"></button>
-        <button id="viewModeSingleBtn" type="button" class="hidden" onclick="window.setMultiAiViewMode('single')"></button>
-        <button id="viewModeGridBtn" type="button" class="hidden" onclick="window.setMultiAiViewMode('grid')"></button>
-
-        <!-- Header Utility Actions -->
-        <div class="flex items-center gap-1.5 shrink-0">
-          <button id="workspaceOpenDeskBtn" type="button" onclick="window.openWorkDesk ? window.openWorkDesk() : window.Ln(true)" class="px-2.5 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-intel-850 dark:hover:bg-intel-800 text-gray-800 dark:text-slate-200 border border-gray-300 dark:border-intel-border transition text-xs font-semibold flex items-center gap-1 cursor-pointer" title="Open Work Desk Office Compiler">
-            <span>🗂️</span>
-            <span class="text-[11px] hidden sm:inline">Work Desk</span>
-          </button>
-          <button id="closeMultiAiWorkspaceBtn" type="button" onclick="window.closeMultiAiWorkspace()" class="p-1 rounded-lg text-gray-500 hover:text-gray-900 dark:text-slate-400 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-intel-800 transition cursor-pointer" title="Close Multi-AI Workstation">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
-        </div>
-      </div>
-
-      <!-- Informative Browser Preview Alert Banner (Poka-Yoke Fallback for Web/Browser Runtime) -->
-      <div id="browserPreviewNoticeBanner" class="px-3.5 py-1.5 bg-gradient-to-r from-[#003886] via-[#06234D] to-[#003886] border-b border-[#00C4E7]/40 text-white flex items-center justify-between gap-2 text-xs shrink-0 select-none shadow-sm">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="text-sm shrink-0">🌐</span>
-          <span class="font-bold text-[11px] text-[#00C4E7] shrink-0">Browser Preview Mode:</span>
-          <span class="text-[11px] text-slate-100 truncate">Native Multi-Session Partition Active in Desktop .exe</span>
-        </div>
-        <span class="text-[9px] px-2 py-0.5 rounded-full bg-cyan-950 text-[#00C4E7] border border-[#00C4E7]/50 font-mono shrink-0">partition="persist:sentinel_ai_workspace"</span>
-      </div>
-
-      <!-- Single View Engine Selector Bar (Section 3) -->
-      <div id="singleEngineSelectorBar" class="hidden flex items-center gap-2 px-4 py-2 bg-[#041a38] border-b border-slate-800 text-xs select-none">
-        <span class="text-slate-400 font-semibold uppercase tracking-wider text-[10px]">Active Engine:</span>
-        <button type="button" id="singleEngBtn_local" onclick="window.setSingleActiveEngine('local')" class="px-2.5 py-1 rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer font-medium">⚡ Local Edge</button>
-        <button type="button" id="singleEngBtn_copilot" onclick="window.setSingleActiveEngine('copilot')" class="px-2.5 py-1 rounded-md bg-[#003886] text-white font-bold border border-[#00C4E7]/40 shadow-xs cursor-pointer">🔷 Copilot</button>
-        <button type="button" id="singleEngBtn_chatgpt" onclick="window.setSingleActiveEngine('chatgpt')" class="px-2.5 py-1 rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer font-medium">🟢 ChatGPT</button>
-        <button type="button" id="singleEngBtn_gemini" onclick="window.setSingleActiveEngine('gemini')" class="px-2.5 py-1 rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 cursor-pointer font-medium">🔵 Gemini</button>
-      </div>
-
-      <!-- Main Panes Container Area (Desktop <webview> or Simulated Preview) -->
-      <div id="multiAiWorkspacePanes" class="flex-1 overflow-hidden relative flex flex-col bg-gray-50 dark:bg-intel-950">
-        <!-- Multi-AI Workstation Grid Container (Section 3) -->
-        <div id="multiAiPanelsGrid" class="flex-1 overflow-y-auto p-3 grid grid-cols-1 xl:grid-cols-2 gap-3 bg-gray-100 dark:bg-[#041630]">
-          <!-- PANE 1: LOCAL EDGE NEURAL ENGINE -->
-          <div id="pane_local" class="flex flex-col rounded-2xl border border-gray-300 dark:border-intel-border/80 bg-white dark:bg-[#06234D] shadow-md overflow-hidden min-h-[460px]">
-            <!-- Pane Header -->
-            <div class="px-3.5 py-2.5 bg-gray-50 dark:bg-[#03142c] border-b border-gray-200 dark:border-cyan-500/20 flex items-center justify-between gap-2 shrink-0 select-none">
-              <div class="flex items-center gap-2 min-w-0 cursor-pointer" onclick="window.setSingleActiveEngine('local')">
-                <span class="text-base">⚡</span>
-                <div class="truncate">
-                  <div class="flex items-center gap-1.5">
-                    <span class="font-bold text-xs text-gray-900 dark:text-white">Local Edge Engine</span>
-                    <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60 font-mono font-bold">WebGPU / LiteRT-LM</span>
-                  </div>
-                  <span class="text-[10px] text-gray-500 dark:text-slate-400 font-mono">100% On-Device • RA 10173 • Zero Cloud Egress</span>
-                </div>
-              </div>
-              <div class="flex items-center gap-1.5 shrink-0">
-                <button type="button" onclick="window.importToNotepad()" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" title="Import Local Edge output to Notepad">
-                  <span>📥</span><span>To Desk</span>
-                </button>
-              </div>
-            </div>
-            <!-- Local Edge Content Area -->
-            <div class="flex-1 p-3.5 flex flex-col overflow-y-auto space-y-3 text-xs">
-              <div class="p-3 rounded-xl bg-purple-950/20 border border-purple-800/40 space-y-2">
-                <div class="flex items-center justify-between text-[11px] font-bold text-purple-300">
-                  <span class="flex items-center gap-1.5"><span>🧠</span> Reasoning Traces &lt;think&gt;</span>
-                  <span class="text-[10px] font-mono text-emerald-400">● WebGPU Active</span>
-                </div>
-                <p class="text-[11px] text-purple-200/90 leading-relaxed font-mono">
-                  Local model neural weights execute fully inside the on-device sandbox. Multi-step reasoning chains stream into &lt;think&gt; trays with zero telemetry.
-                </p>
-              </div>
-              <div id="pane_local_stream_box" class="p-3 rounded-xl bg-gray-50 dark:bg-intel-950 border border-gray-200 dark:border-intel-border space-y-1.5">
-                <div class="flex items-center justify-between text-[10px] font-mono font-bold text-cyan-600 dark:text-cyan-400">
-                  <span>LOCAL EDGE SYNTHESIS BUFFER</span>
-                  <span class="text-slate-400">Autonomous Ready</span>
-                </div>
-                <div class="pane-response-text text-xs text-gray-800 dark:text-slate-200 leading-relaxed font-sans" data-raw="Local Edge Neural Engine ready for autonomous synthesis, DOA compliance auditing, and on-device risk analysis under RA 10173.">
-                  Local Edge Neural Engine ready for autonomous synthesis, DOA compliance auditing, and on-device risk analysis under RA 10173.
-                </div>
-              </div>
-            </div>
-            <!-- Pane Local Action -->
-            <div class="p-2.5 bg-gray-50 dark:bg-intel-850 border-t border-gray-200 dark:border-intel-border flex items-center gap-2 shrink-0">
-              <button type="button" onclick="window.synthesizeBest()" class="flex-1 py-1.5 px-3 bg-[#003886] hover:bg-[#002860] text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer flex items-center justify-center gap-1.5">
-                <span>⚡</span><span>Run Multi-Engine Consensus Synthesis</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- PANE 2: MICROSOFT COPILOT -->
-          <div id="pane_copilot" class="flex flex-col rounded-2xl border border-gray-300 dark:border-intel-border/80 bg-white dark:bg-[#06234D] shadow-md overflow-hidden min-h-[460px]">
-            <!-- Pane Header -->
-            <div class="px-3.5 py-2.5 bg-gray-50 dark:bg-[#03142c] border-b border-gray-200 dark:border-cyan-500/20 flex items-center justify-between gap-2 shrink-0 select-none">
-              <div class="flex items-center gap-2 min-w-0 cursor-pointer" onclick="window.setSingleActiveEngine('copilot')" title="Click to focus Microsoft Copilot">
-                <span class="text-base text-[#0078D4]">🔷</span>
-                <div class="truncate">
-                  <div class="flex items-center gap-1.5">
-                    <span class="font-bold text-xs text-gray-900 dark:text-white">Microsoft Copilot</span>
-                    <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-800 font-mono font-bold">Enterprise Graph</span>
-                  </div>
-                  <span class="text-[10px] text-gray-500 dark:text-slate-400 font-mono">partition="persist:sentinel_ai_workspace"</span>
-                </div>
-              </div>
-              <div class="flex items-center gap-1.5 shrink-0">
-                <button type="button" onclick="window.importToNotepad()" class="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" title="Import Copilot response to Notepad">
-                  <span>📥</span><span class="hidden sm:inline">To Desk</span>
-                </button>
-                <button type="button" onclick="window.distillToMemoryHub()" class="px-2 py-0.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" title="Distill to Memory Hub">
-                  <span>🧠</span><span class="hidden sm:inline">Distill</span>
-                </button>
-              </div>
-            </div>
-            <!-- Webview Mount / Fallback Container -->
-            <div id="pane_copilot_webview_container" class="flex-1 flex flex-col overflow-hidden bg-white dark:bg-intel-950">
-              <div class="flex-1 p-3.5 flex flex-col overflow-y-auto space-y-3 text-xs">
-                <div class="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-slate-800 dark:text-slate-200 space-y-1">
-                  <div class="flex items-center justify-between text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400">
-                    <span>M365 BUSINESS GRAPH GROUNDING</span>
-                    <span class="text-emerald-500 font-bold">● Active Session</span>
-                  </div>
-                  <p class="text-[11px] text-gray-700 dark:text-slate-300">
-                    Connected to Microsoft Copilot with persistent auth partition (<code class="text-cyan-600 dark:text-cyan-400 font-mono">persist:sentinel_ai_workspace</code>).
-                  </p>
-                </div>
-
-                <div class="p-3 rounded-xl bg-gray-50 dark:bg-intel-900 border border-gray-200 dark:border-intel-border space-y-2">
-                  <div class="flex items-center justify-between text-[10px] font-mono text-cyan-600 dark:text-cyan-400 font-bold">
-                    <span>DOA PROCUREMENT AUDIT OBSERVATION</span>
-                    <button type="button" onclick="navigator.clipboard.writeText('DOA Split PO Review: Under DOA Policy Section 4.2.1, purchase orders issued to Vendor #V-4092 of $48,500, $49,000, and $47,800 within 72 hours circumvent the $50k executive threshold.'); window.showToast ? window.showToast('Prompt copied!', 'info') : null;" class="hover:underline cursor-pointer">Copy</button>
-                  </div>
-                  <div class="pane-response-text text-xs leading-relaxed text-gray-900 dark:text-slate-100 font-sans" data-raw="Under Delegation of Authority (DOA) Policy Section 4.2.1, purchase orders issued to Vendor #V-4092 of $48,500, $49,000, and $47,800 within 72 hours circumvent the $50k executive threshold. Immediate Recommendation: Suspend automated invoice release and enforce retrospective ManCom approval.">
-                    <strong>Finding:</strong> Under <em>Delegation of Authority (DOA) Policy Section 4.2.1</em>, three sequential purchase orders issued to Vendor #V-4092 ($48,500, $49,000, and $47,800 totaling <strong>$145,300 USD</strong> within 72 hours) represent an unapproved threshold circumvention.<br/>
-                    <strong>Action:</strong> Automated SAP invoice lock and retrospective ManCom committee sign-off required.
-                  </div>
-                </div>
-
-                <div class="space-y-1.5 pt-1">
-                  <span class="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase font-mono">Test Dispatch Actions:</span>
-                  <button type="button" onclick="if(window.dispatchQuickSamplePrompt) window.dispatchQuickSamplePrompt('copilot', 'Audit Observation Memorandum: Review purchase order splitting threshold compliance under DOA Section 4.2.1.')" class="w-full p-2 rounded-xl bg-gray-50 dark:bg-intel-850 hover:bg-gray-100 dark:hover:bg-intel-800 border border-gray-200 dark:border-intel-border text-[11px] font-medium text-gray-800 dark:text-slate-200 transition text-left cursor-pointer truncate">
-                    📑 DOA Split PO Threshold Compliance Review
-                  </button>
-                  <button type="button" onclick="if(window.dispatchQuickSamplePrompt) window.dispatchQuickSamplePrompt('copilot', 'Provide a structured comparison of vendor SLA breach root causes and penalty matrices.')" class="w-full p-2 rounded-xl bg-gray-50 dark:bg-intel-850 hover:bg-gray-100 dark:hover:bg-intel-800 border border-gray-200 dark:border-intel-border text-[11px] font-medium text-gray-800 dark:text-slate-200 transition text-left cursor-pointer truncate">
-                    📊 Vendor SLA Breach &amp; Penalty Matrix
-                  </button>
-                </div>
-              </div>
-              <!-- In-Card Input -->
-              <div class="p-2.5 bg-gray-50 dark:bg-intel-850 border-t border-gray-200 dark:border-intel-border flex items-center gap-2 shrink-0">
-                <input type="text" id="paneQuickInput_copilot" placeholder="Send query to Copilot..." class="flex-1 bg-white dark:bg-intel-950 border border-gray-300 dark:border-intel-border rounded-xl px-3 py-1.5 text-xs text-gray-900 dark:text-slate-100 placeholder:text-gray-400 focus:outline-none focus:border-cyan-500 font-sans" onkeydown="if(event.key === 'Enter'){ if(window.dispatchQuickPaneInput) window.dispatchQuickPaneInput('copilot'); }" />
-                <button type="button" onclick="if(window.dispatchQuickPaneInput) window.dispatchQuickPaneInput('copilot')" class="px-3 py-1.5 bg-[#003886] hover:bg-[#002860] text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer shrink-0">Send</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- PANE 3: OPENAI CHATGPT -->
-          <div id="pane_chatgpt" class="hidden flex-col rounded-2xl border border-gray-300 dark:border-intel-border/80 bg-white dark:bg-[#06234D] shadow-md overflow-hidden min-h-[460px]">
-            <!-- Pane Header -->
-            <div class="px-3.5 py-2.5 bg-gray-50 dark:bg-[#03142c] border-b border-gray-200 dark:border-cyan-500/20 flex items-center justify-between gap-2 shrink-0 select-none">
-              <div class="flex items-center gap-2 min-w-0 cursor-pointer" onclick="window.setSingleActiveEngine('chatgpt')" title="Click to focus OpenAI ChatGPT">
-                <span class="text-base text-[#10A37F]">🟢</span>
-                <div class="truncate">
-                  <div class="flex items-center gap-1.5">
-                    <span class="font-bold text-xs text-gray-900 dark:text-white">OpenAI ChatGPT</span>
-                    <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 font-mono font-bold">GPT-4o Analytics</span>
-                  </div>
-                  <span class="text-[10px] text-gray-500 dark:text-slate-400 font-mono">partition="persist:sentinel_ai_workspace"</span>
-                </div>
-              </div>
-              <div class="flex items-center gap-1.5 shrink-0">
-                <button type="button" onclick="window.importToNotepad()" class="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" title="Import ChatGPT response to Notepad">
-                  <span>📥</span><span class="hidden sm:inline">To Desk</span>
-                </button>
-                <button type="button" onclick="window.distillToMemoryHub()" class="px-2 py-0.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" title="Distill to Memory Hub">
-                  <span>🧠</span><span class="hidden sm:inline">Distill</span>
-                </button>
-              </div>
-            </div>
-            <!-- Webview Mount / Fallback Container -->
-            <div id="pane_chatgpt_webview_container" class="flex-1 flex flex-col overflow-hidden bg-white dark:bg-intel-950">
-              <div class="flex-1 p-3.5 flex flex-col overflow-y-auto space-y-3 text-xs">
-                <div class="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-slate-800 dark:text-slate-200 space-y-1">
-                  <div class="flex items-center justify-between text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                    <span>FMEA FAILURE MODE &amp; VARIANCE ENGINE</span>
-                    <span class="text-emerald-500 font-bold">● Active Session</span>
-                  </div>
-                  <p class="text-[11px] text-gray-700 dark:text-slate-300">
-                    OpenAI ChatGPT Workspace with persistent session state and quantitative root-cause modeling.
-                  </p>
-                </div>
-
-                <div class="p-3 rounded-xl bg-gray-50 dark:bg-intel-900 border border-gray-200 dark:border-intel-border space-y-2">
-                  <div class="flex items-center justify-between text-[10px] font-mono text-cyan-600 dark:text-cyan-400 font-bold">
-                    <span>FMEA RISK PRIORITY NUMBER (RPN) MODEL</span>
-                    <button type="button" onclick="navigator.clipboard.writeText('FMEA Assessment: Invoice Splitting below $50k severity S=8, O=7, D=6 -> RPN 336. Immediate ERP threshold script required.'); window.showToast ? window.showToast('Prompt copied!', 'info') : null;" class="hover:underline cursor-pointer">Copy</button>
-                  </div>
-                  <div class="pane-response-text text-xs leading-relaxed text-gray-900 dark:text-slate-100 font-sans" data-raw="Failure Mode: Invoice Splitting below $50k. Severity: 8, Occurrence: 7, Detection: 6 -> RPN: 336 (High Risk). Mitigation Control: Automated ERP threshold aggregator script to prevent unbundled commitments.">
-                    <strong>Failure Mode:</strong> Unbundled Requisitions below $50,000 USD.<br/>
-                    <strong>RPN Scoring:</strong> Severity (8) × Occurrence (7) × Detection (6) = <strong class="text-red-500 font-mono">RPN 336 (High Risk)</strong>.<br/>
-                    <strong>Mitigation:</strong> Automated ERP script calculating cumulative rolling 72-hour exposure per vendor.
-                  </div>
-                </div>
-
-                <div class="space-y-1.5 pt-1">
-                  <span class="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase font-mono">Test Dispatch Actions:</span>
-                  <button type="button" onclick="if(window.dispatchQuickSamplePrompt) window.dispatchQuickSamplePrompt('chatgpt', 'Audit Observation Memorandum: Review purchase order splitting threshold compliance under DOA Section 4.2.1.')" class="w-full p-2 rounded-xl bg-gray-50 dark:bg-intel-850 hover:bg-gray-100 dark:hover:bg-intel-800 border border-gray-200 dark:border-intel-border text-[11px] font-medium text-gray-800 dark:text-slate-200 transition text-left cursor-pointer truncate">
-                    📑 DOA Split PO Threshold Compliance Review
-                  </button>
-                  <button type="button" onclick="if(window.dispatchQuickSamplePrompt) window.dispatchQuickSamplePrompt('chatgpt', 'Provide a structured comparison of vendor SLA breach root causes and penalty matrices.')" class="w-full p-2 rounded-xl bg-gray-50 dark:bg-intel-850 hover:bg-gray-100 dark:hover:bg-intel-800 border border-gray-200 dark:border-intel-border text-[11px] font-medium text-gray-800 dark:text-slate-200 transition text-left cursor-pointer truncate">
-                    📊 FMEA Failure Mode Assessment
-                  </button>
-                </div>
-              </div>
-              <!-- In-Card Input -->
-              <div class="p-2.5 bg-gray-50 dark:bg-intel-850 border-t border-gray-200 dark:border-intel-border flex items-center gap-2 shrink-0">
-                <input type="text" id="paneQuickInput_chatgpt" placeholder="Send query to ChatGPT..." class="flex-1 bg-white dark:bg-intel-950 border border-gray-300 dark:border-intel-border rounded-xl px-3 py-1.5 text-xs text-gray-900 dark:text-slate-100 placeholder:text-gray-400 focus:outline-none focus:border-cyan-500 font-sans" onkeydown="if(event.key === 'Enter'){ if(window.dispatchQuickPaneInput) window.dispatchQuickPaneInput('chatgpt'); }" />
-                <button type="button" onclick="if(window.dispatchQuickPaneInput) window.dispatchQuickPaneInput('chatgpt')" class="px-3 py-1.5 bg-[#003886] hover:bg-[#002860] text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer shrink-0">Send</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- PANE 4: GOOGLE GEMINI -->
-          <div id="pane_gemini" class="hidden flex-col rounded-2xl border border-gray-300 dark:border-intel-border/80 bg-white dark:bg-[#06234D] shadow-md overflow-hidden min-h-[460px]">
-            <!-- Pane Header -->
-            <div class="px-3.5 py-2.5 bg-gray-50 dark:bg-[#03142c] border-b border-gray-200 dark:border-cyan-500/20 flex items-center justify-between gap-2 shrink-0 select-none">
-              <div class="flex items-center gap-2 min-w-0 cursor-pointer" onclick="window.setSingleActiveEngine('gemini')" title="Click to focus Google Gemini">
-                <span class="text-base text-[#1A73E8]">🔵</span>
-                <div class="truncate">
-                  <div class="flex items-center gap-1.5">
-                    <span class="font-bold text-xs text-gray-900 dark:text-white">Google Gemini</span>
-                    <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-800 font-mono font-bold">Gemini 2.5 Pro</span>
-                  </div>
-                  <span class="text-[10px] text-gray-500 dark:text-slate-400 font-mono">partition="persist:sentinel_ai_workspace"</span>
-                </div>
-              </div>
-              <div class="flex items-center gap-1.5 shrink-0">
-                <button type="button" onclick="window.importToNotepad()" class="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" title="Import Gemini response to Notepad">
-                  <span>📥</span><span class="hidden sm:inline">To Desk</span>
-                </button>
-                <button type="button" onclick="window.distillToMemoryHub()" class="px-2 py-0.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" title="Distill to Memory Hub">
-                  <span>🧠</span><span class="hidden sm:inline">Distill</span>
-                </button>
-              </div>
-            </div>
-            <!-- Webview Mount / Fallback Container -->
-            <div id="pane_gemini_webview_container" class="flex-1 flex flex-col overflow-hidden bg-white dark:bg-intel-950">
-              <div class="flex-1 p-3.5 flex flex-col overflow-y-auto space-y-3 text-xs">
-                <div class="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-slate-800 dark:text-slate-200 space-y-1">
-                  <div class="flex items-center justify-between text-[10px] font-mono font-bold text-sky-600 dark:text-sky-400">
-                    <span>MULTIMODAL STRATEGIC SYNTHESIS</span>
-                    <span class="text-emerald-500 font-bold">● Active Session</span>
-                  </div>
-                  <p class="text-[11px] text-gray-700 dark:text-slate-300">
-                    Google Gemini 2.5 Pro Workspace with executive slide generation and board-level governance synthesis.
-                  </p>
-                </div>
-
-                <div class="p-3 rounded-xl bg-gray-50 dark:bg-intel-900 border border-gray-200 dark:border-intel-border space-y-2">
-                  <div class="flex items-center justify-between text-[10px] font-mono text-cyan-600 dark:text-cyan-400 font-bold">
-                    <span>BOARD-LEVEL STRATEGIC SLIDE BRIEF</span>
-                    <button type="button" onclick="navigator.clipboard.writeText('Slide 1: Strategic Governance Reform - 7-Day Rolling Cumulative Exposure Gate to prevent fragmented commitments exceeding $50k.'); window.showToast ? window.showToast('Prompt copied!', 'info') : null;" class="hover:underline cursor-pointer">Copy</button>
-                  </div>
-                  <div class="pane-response-text text-xs leading-relaxed text-gray-900 dark:text-slate-100 font-sans" data-raw="# Slide 1: Strategic Governance Reform. Enact a 7-Day Rolling Cumulative Exposure Gate in SAP MM that sums all POs to a single vendor within any rolling 7-day period.">
-                    <strong>Strategic Recommendation:</strong> Enact a <em>7-Day Rolling Cumulative Exposure Gate</em> in procurement ERP that automatically flags all POs to a single vendor exceeding $50,000 USD within any 7-day window.
-                  </div>
-                </div>
-
-                <div class="space-y-1.5 pt-1">
-                  <span class="text-[10px] font-bold text-gray-500 dark:text-slate-400 uppercase font-mono">Test Dispatch Actions:</span>
-                  <button type="button" onclick="if(window.dispatchQuickSamplePrompt) window.dispatchQuickSamplePrompt('gemini', 'Audit Observation Memorandum: Review purchase order splitting threshold compliance under DOA Section 4.2.1.')" class="w-full p-2 rounded-xl bg-gray-50 dark:bg-intel-850 hover:bg-gray-100 dark:hover:bg-intel-800 border border-gray-200 dark:border-intel-border text-[11px] font-medium text-gray-800 dark:text-slate-200 transition text-left cursor-pointer truncate">
-                    📑 DOA Split PO Threshold Compliance Review
-                  </button>
-                  <button type="button" onclick="if(window.dispatchQuickSamplePrompt) window.dispatchQuickSamplePrompt('gemini', 'Provide a structured comparison of vendor SLA breach root causes and penalty matrices.')" class="w-full p-2 rounded-xl bg-gray-50 dark:bg-intel-850 hover:bg-gray-100 dark:hover:bg-intel-800 border border-gray-200 dark:border-intel-border text-[11px] font-medium text-gray-800 dark:text-slate-200 transition text-left cursor-pointer truncate">
-                    🖥️ Executive 16:9 Presentation Deck
-                  </button>
-                </div>
-              </div>
-              <!-- In-Card Input -->
-              <div class="p-2.5 bg-gray-50 dark:bg-intel-850 border-t border-gray-200 dark:border-intel-border flex items-center gap-2 shrink-0">
-                <input type="text" id="paneQuickInput_gemini" placeholder="Send query to Gemini..." class="flex-1 bg-white dark:bg-intel-950 border border-gray-300 dark:border-intel-border rounded-xl px-3 py-1.5 text-xs text-gray-900 dark:text-slate-100 placeholder:text-gray-400 focus:outline-none focus:border-cyan-500 font-sans" onkeydown="if(event.key === 'Enter'){ if(window.dispatchQuickPaneInput) window.dispatchQuickPaneInput('gemini'); }" />
-                <button type="button" onclick="if(window.dispatchQuickPaneInput) window.dispatchQuickPaneInput('gemini')" class="px-3 py-1.5 bg-[#003886] hover:bg-[#002860] text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer shrink-0">Send</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- MULTI-ENGINE SYNTHESIS TRAY & WORK DESK INTEGRATION ACTION BAR (Section 4) -->
-      <div id="multiEngineSynthesisTray" class="p-2.5 sm:p-3 border-t border-gray-200 dark:border-cyan-500/30 bg-white dark:bg-[#03142c] flex flex-wrap items-center justify-between gap-2.5 shrink-0 z-20 shadow-md">
-        <div class="flex items-center gap-2">
-          <span class="text-[10px] font-extrabold uppercase tracking-wider text-gray-500 dark:text-[#00C4E7] flex items-center gap-1 select-none">
-            <span>⚡</span> Synthesis Tray:
-          </span>
-          <span id="synthesisTargetEngineBadge" class="text-[10px] px-2.5 py-0.5 rounded-full bg-[#003886] text-white border border-[#00C4E7]/40 font-mono font-bold">Copilot Session Active</span>
-        </div>
-
-        <div class="flex items-center gap-2 flex-wrap">
-          <button id="trayImportNotepadBtn" type="button" onclick="window.importToNotepad()" class="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer" title="Extract or paste response into Notepad &amp; trigger live word counters">
-            <span>📥</span>
-            <span>Import to Notepad</span>
-          </button>
-          <button id="trayImportWorkDeskBtn" type="button" onclick="window.importToNotepad()" class="hidden" aria-hidden="true"></button>
-
-          <button id="traySynthesizeBestBtn" type="button" onclick="window.synthesizeBest()" class="px-3 py-1.5 rounded-xl bg-[#7F59E9] hover:bg-[#6c47d6] text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer" title="Prompt Local Edge to compare findings, identify consensus points &amp; highlight DOA thresholds">
-            <span>⚡</span>
-            <span>Synthesize Best</span>
-          </button>
-
-          <button id="trayDistillMemoryBtn" type="button" onclick="window.distillToMemoryHub()" class="px-3 py-1.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer" title="Extract durable rules or DOA limits into IndexedDB Memory Hub">
-            <span>🧠</span>
-            <span>Distill to Memory Hub</span>
-          </button>
-        </div>
-      </div>
-    </aside>
+    <!-- MULTI-AI CONVERGENCE WORKSPACE -->
+    <div id="multiAiHubContainer" class="hidden flex-1 flex-col overflow-hidden bg-gray-100 dark:bg-[#121316] relative z-10 transition-all duration-150">
+      <!-- Injected and rendered dynamically by multiAiHub.ts -->
+    </div>
 
     <!-- INTERACTIVE WORK DESK SIDE PANEL -->
     <div id="workDeskResizer" class="hidden w-1.5 hover:w-2 bg-theme-border hover:bg-blue-500 cursor-col-resize transition-all z-20 shrink-0"></div>
@@ -4330,145 +3689,6 @@
               <span>Save Capabilities</span>
             </button>
           </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- DISTILL TO MEMORY HUB MODAL (Synthesis Tray Action) -->
-  <div id="distillMemoryModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-[80] hidden flex items-center justify-center p-4 transition-all">
-    <div class="bg-white dark:bg-intel-900 border border-gray-300 dark:border-intel-border rounded-2xl w-full max-w-lg p-5 sm:p-6 space-y-4 shadow-2xl relative">
-      <div class="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-intel-border">
-        <div class="flex items-center gap-2.5">
-          <div class="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-950/70 border border-purple-300 dark:border-purple-600/50 flex items-center justify-center text-lg text-purple-700 dark:text-purple-300 shadow-xs">
-            🧠
-          </div>
-          <div>
-            <h3 class="text-sm font-bold text-gray-900 dark:text-white">Distill to Persistent Memory Hub</h3>
-            <p class="text-[11px] text-gray-600 dark:text-slate-300">Parse durable corporate rule or threshold into IndexedDB vault</p>
-          </div>
-        </div>
-        <button id="closeDistillMemoryModalBtn" type="button" class="text-gray-500 hover:text-gray-900 dark:text-slate-300 dark:hover:text-white p-1 rounded-lg transition cursor-pointer" title="Close">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
-      </div>
-
-      <div class="space-y-3.5 text-xs">
-        <div>
-          <label class="block font-semibold text-gray-700 dark:text-slate-200 mb-1">Durable Rule Statement / Threshold</label>
-          <textarea id="distillMemoryContentInput" rows="4" class="w-full bg-gray-50 dark:bg-intel-950 border border-gray-300 dark:border-intel-border rounded-xl p-2.5 text-xs text-gray-900 dark:text-slate-100 leading-relaxed focus:outline-none focus:border-purple-500 font-sans" placeholder="Enter or edit extracted corporate rule..."></textarea>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block font-semibold text-gray-700 dark:text-slate-200 mb-1">Category</label>
-            <select id="distillMemoryCategorySelect" class="w-full bg-gray-50 dark:bg-intel-950 border border-gray-300 dark:border-intel-border rounded-xl px-2.5 py-2 text-xs text-gray-900 dark:text-slate-100 focus:outline-none focus:border-purple-500 cursor-pointer">
-              <option value="Policy Rule">Policy Rule</option>
-              <option value="Threshold">Threshold</option>
-              <option value="Domain Context">Domain Context</option>
-              <option value="Correction">Correction</option>
-              <option value="User Preference">User Preference</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="block font-semibold text-gray-700 dark:text-slate-200 mb-1">Confidence Verification</label>
-            <select id="distillMemoryConfidenceSelect" class="w-full bg-gray-50 dark:bg-intel-950 border border-gray-300 dark:border-intel-border rounded-xl px-2.5 py-2 text-xs text-gray-900 dark:text-slate-100 focus:outline-none focus:border-purple-500 cursor-pointer">
-              <option value="Verified">Verified</option>
-              <option value="High">High</option>
-              <option value="User Defined">User Defined</option>
-            </select>
-          </div>
-        </div>
-
-        <label class="flex items-center gap-2 p-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50 cursor-pointer select-none">
-          <input type="checkbox" id="distillMemoryPinCheck" checked class="accent-purple-600 rounded w-4 h-4 cursor-pointer" />
-          <span class="text-xs font-semibold text-purple-900 dark:text-purple-300 flex items-center gap-1">
-            <span>📌</span>
-            <span>Pin Rule (Guarantees top-priority injection within 2,800-token budget)</span>
-          </span>
-        </label>
-      </div>
-
-      <div class="pt-3 flex items-center justify-between border-t border-gray-200 dark:border-intel-border">
-        <span class="text-[10px] text-gray-500 dark:text-slate-400 font-mono">Vault: sentinel_memory_vault</span>
-        <div class="flex items-center gap-2">
-          <button type="button" id="cancelDistillMemoryBtn" class="px-3.5 py-2 rounded-xl border border-gray-300 dark:border-intel-border text-xs font-semibold text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-intel-800 transition cursor-pointer">
-            Cancel
-          </button>
-          <button type="button" id="saveDistillMemoryBtn" class="px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer">
-            <span>💾</span>
-            <span>Save to Memory Vault</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- IMPORT TO WORK DESK MODAL (Synthesis Tray Action) -->
-  <div id="importDeskModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-[80] hidden flex items-center justify-center p-4 transition-all">
-    <div class="bg-white dark:bg-intel-900 border border-gray-300 dark:border-intel-border rounded-2xl w-full max-w-lg p-5 sm:p-6 space-y-4 shadow-2xl relative">
-      <div class="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-intel-border">
-        <div class="flex items-center gap-2.5">
-          <div class="w-9 h-9 rounded-xl bg-blue-100 dark:bg-[#003886]/40 border border-blue-300 dark:border-[#00C4E7]/40 flex items-center justify-center text-lg text-blue-600 dark:text-[#00C4E7] shadow-xs">
-            📥
-          </div>
-          <div>
-            <h3 class="text-sm font-bold text-gray-900 dark:text-white">Import Response to Work Desk</h3>
-            <p class="text-[11px] text-gray-600 dark:text-slate-300">Route session deliverable into Document, Grid, or Slide compiler</p>
-          </div>
-        </div>
-        <button id="closeImportDeskModalBtn" type="button" class="text-gray-500 hover:text-gray-900 dark:text-slate-300 dark:hover:text-white p-1 rounded-lg transition cursor-pointer" title="Close">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
-      </div>
-
-      <div class="space-y-3 text-xs">
-        <div>
-          <label class="block font-semibold text-gray-700 dark:text-slate-200 mb-1.5">Detected Target Format</label>
-          <div class="grid grid-cols-3 gap-2" id="importFormatSelectorGrid">
-            <label class="p-2.5 rounded-xl border border-gray-300 dark:border-intel-border bg-gray-50 dark:bg-intel-950 flex flex-col items-center gap-1 cursor-pointer transition import-format-card hover:border-blue-500">
-              <input type="radio" name="importTargetFormat" value="word" checked class="sr-only" />
-              <span class="text-base">📄</span>
-              <span class="font-bold text-[11px] text-gray-900 dark:text-white">Word (.docx)</span>
-              <span class="text-[9px] text-gray-500 dark:text-slate-400">Executive Memo</span>
-            </label>
-
-            <label class="p-2.5 rounded-xl border border-gray-300 dark:border-intel-border bg-gray-50 dark:bg-intel-950 flex flex-col items-center gap-1 cursor-pointer transition import-format-card hover:border-emerald-500">
-              <input type="radio" name="importTargetFormat" value="excel" class="sr-only" />
-              <span class="text-base">📊</span>
-              <span class="font-bold text-[11px] text-gray-900 dark:text-white">Excel (.xlsx)</span>
-              <span class="text-[9px] text-gray-500 dark:text-slate-400">Spreadsheet Grid</span>
-            </label>
-
-            <label class="p-2.5 rounded-xl border border-gray-300 dark:border-intel-border bg-gray-50 dark:bg-intel-950 flex flex-col items-center gap-1 cursor-pointer transition import-format-card hover:border-amber-500">
-              <input type="radio" name="importTargetFormat" value="slides" class="sr-only" />
-              <span class="text-base">🖥️</span>
-              <span class="font-bold text-[11px] text-gray-900 dark:text-white">Slides (.pptx)</span>
-              <span class="text-[9px] text-gray-500 dark:text-slate-400">16:9 Carousel</span>
-            </label>
-          </div>
-        </div>
-
-        <div>
-          <div class="flex items-center justify-between mb-1">
-            <label class="font-semibold text-gray-700 dark:text-slate-200">Content Preview / Paste Override</label>
-            <span id="importDeskCharCount" class="text-[10px] text-gray-500 dark:text-slate-400 font-mono">0 chars</span>
-          </div>
-          <textarea id="importDeskPreviewTextarea" rows="6" class="w-full bg-gray-50 dark:bg-intel-950 border border-gray-300 dark:border-intel-border rounded-xl p-2.5 text-xs text-gray-900 dark:text-slate-100 font-mono leading-relaxed focus:outline-none focus:border-blue-500" placeholder="Paste or edit the response text to import..."></textarea>
-        </div>
-      </div>
-
-      <div class="pt-3 flex items-center justify-between border-t border-gray-200 dark:border-intel-border">
-        <span class="text-[10px] text-gray-500 dark:text-slate-400">Routes automatically to Work Desk canvas</span>
-        <div class="flex items-center gap-2">
-          <button type="button" id="cancelImportDeskBtn" class="px-3.5 py-2 rounded-xl border border-gray-300 dark:border-intel-border text-xs font-semibold text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-intel-800 transition cursor-pointer">
-            Cancel
-          </button>
-          <button type="button" id="confirmImportDeskBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer">
-            <span>📥</span>
-            <span>Load into Work Desk</span>
-          </button>
         </div>
       </div>
     </div>
