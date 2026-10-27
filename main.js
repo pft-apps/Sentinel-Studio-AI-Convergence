@@ -21,6 +21,7 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('disable-features', 'WebAuthentication,WebAuthenticationConditionalUI');
 
 const PERSISTENT_SESSION_PARTITION = 'persist:sentinel_ai_workspace';
+const SHARED_PARTITION = 'persist:sentinel_ai_workspace';
 const CHROME_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -283,22 +284,7 @@ function configurePartitionHeaders(targetSession) {
         });
       }
     });
-    callback({ cancel: false, responseHeaders });
   });
-
-  // Intercept any attempted in-webview navigation to accounts.google.com to prevent Disallowed User-Agent / WebAuthn blocks
-  targetSession.webRequest.onBeforeRequest(
-    { urls: ['https://accounts.google.com/*', 'https://accounts.youtube.com/*'] },
-    (details, callback) => {
-      if (details.resourceType === 'mainFrame' || details.resourceType === 'subFrame') {
-        console.info('[Security Guard] Blocked in-webview navigation to accounts.google.com. Launching external browser instead.');
-        shell.openExternal(details.url);
-        callback({ cancel: true });
-        return;
-      }
-      callback({ cancel: false });
-    }
-  );
 }
 
 function createWindow() {
@@ -334,35 +320,72 @@ function createWindow() {
     }
   });
 
-  // Attach WebAuthn passkey suppression script to webviews & child auth popups
+  // 1. Intercept main window popups: Keep all AI and OAuth login flows inside Sentinel Studio
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        width: 540,
+        height: 720,
+        title: 'Sign In — Sentinel Studio Workspace',
+        autoHideMenuBar: true,
+        webPreferences: {
+          partition: SHARED_PARTITION,
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      },
+    };
+  });
+
+  // 2. Intercept webview popups as soon as they attach & inject passkey suppression
   mainWindow.webContents.on('did-attach-webview', (event, webContents) => {
     webContents.on('dom-ready', () => {
       webContents.executeJavaScript(DISABLE_PASSKEY_INJECTION).catch(() => {});
     });
+
+    webContents.setWindowOpenHandler(({ url }) => {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 540,
+          height: 720,
+          title: 'Sign In — Sentinel Studio Workspace',
+          autoHideMenuBar: true,
+          webPreferences: {
+            partition: SHARED_PARTITION,
+            contextIsolation: true,
+            nodeIntegration: false,
+          },
+        },
+      };
+    });
   });
 
+  // 3. Automatically close popup when login completes & attach passkey suppression
   app.on('browser-window-created', (event, childWindow) => {
     if (childWindow !== mainWindow) {
       childWindow.webContents.on('dom-ready', () => {
         childWindow.webContents.executeJavaScript(DISABLE_PASSKEY_INJECTION).catch(() => {});
       });
-    }
-  });
 
-  // Intercept window open calls: Open external authentication URLs in system browser, allow regular popups
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.includes('accounts.google.com') || url.includes('accounts.youtube.com')) {
-      shell.openExternal(url);
-      return { action: 'deny' };
+      childWindow.webContents.on('did-navigate', (e, navigatedUrl) => {
+        const isAuthFinished =
+          navigatedUrl.includes('gemini.google.com/app') ||
+          (navigatedUrl.includes('chatgpt.com') && !navigatedUrl.includes('/auth/')) ||
+          (navigatedUrl.includes('claude.ai') && !navigatedUrl.includes('/login')) ||
+          (navigatedUrl.includes('perplexity.ai') && !navigatedUrl.includes('/login')) ||
+          (navigatedUrl.includes('copilot.microsoft.com') && !navigatedUrl.includes('login'));
+
+        if (isAuthFinished) {
+          setTimeout(() => {
+            if (!childWindow.isDestroyed()) {
+              childWindow.close();
+            }
+          }, 800);
+        }
+      });
     }
-    return {
-      action: 'allow',
-      overrideBrowserWindowOptions: {
-        width: 600,
-        height: 750,
-        autoHideMenuBar: true,
-      },
-    };
   });
 
   // Directly load the single-file HTML compiled by viteSingleFile
@@ -411,9 +434,23 @@ function setupIpcHandlers() {
 
   ipcMain.handle('app:get-version', () => app.getVersion());
 
-  // External Browser Opener
+  // External Browser Opener — Filter out Auth & AI Domains
   ipcMain.handle('shell:open-external', async (_event, url) => {
     if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+      const isAuthOrAiDomain =
+        url.includes('google.com') ||
+        url.includes('accounts.google.com') ||
+        url.includes('chatgpt.com') ||
+        url.includes('openai.com') ||
+        url.includes('anthropic.com') ||
+        url.includes('claude.ai') ||
+        url.includes('perplexity.ai') ||
+        url.includes('microsoft.com');
+
+      if (isAuthOrAiDomain) {
+        console.info('[Security Guard] Suppressed external browser launch for Auth/AI domain:', url);
+        return false;
+      }
       return await shell.openExternal(url);
     }
     return false;
@@ -655,17 +692,28 @@ function setupIpcHandlers() {
         authUrl.searchParams.set('prompt', 'consent');
 
         console.info(
-          `[Google OAuth] Loopback server listening on ${redirectUri}. Launching external system browser...`
+          `[Google OAuth] Loopback server listening on ${redirectUri}. Launching internal authentication popup...`
         );
 
-        // Open Google OAuth consent URL in user's default external system browser
+        // Open Google OAuth consent URL in internal popup window sharing persistent partition
         try {
-          await shell.openExternal(authUrl.toString());
+          const authWin = new BrowserWindow({
+            width: 540,
+            height: 720,
+            title: 'Sign In with Google — Sentinel Studio Workspace',
+            autoHideMenuBar: true,
+            webPreferences: {
+              partition: SHARED_PARTITION,
+              contextIsolation: true,
+              nodeIntegration: false,
+            },
+          });
+          authWin.loadURL(authUrl.toString());
         } catch (openErr) {
-          stopActiveLoopback('Browser launch failed');
+          stopActiveLoopback('Auth window launch failed');
           resolve({
             success: false,
-            error: `Failed to open default system browser: ${openErr?.message}`,
+            error: `Failed to open authentication window: ${openErr?.message}`,
           });
         }
       });
