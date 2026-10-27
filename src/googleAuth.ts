@@ -218,12 +218,15 @@ class GoogleAuthManager {
       const timer = setTimeout(async () => {
         if (this.state.status !== 'listening') return;
 
+        const dynamicName = localStorage.getItem('sentinel_profile_name') || localStorage.getItem('sentinel_user_name') || 'Google Account User';
+        const dynamicEmail = localStorage.getItem('sentinel_profile_email') || localStorage.getItem('sentinel_user_email') || 'authenticated.user@gmail.com';
+
         const mockUser: GoogleUser = {
-          name: 'Patrick Jay F. Tanap, CPA, CICA',
-          email: 'pjftanap@gmail.com',
+          name: dynamicName,
+          email: dynamicEmail,
           verified_email: true,
           picture: 'https://lh3.googleusercontent.com/a/default-user',
-          sub: 'sentinel_desktop_exec_2026',
+          sub: `google_user_${Date.now()}`,
         };
 
         const mockTokens: GoogleTokens = {
@@ -641,6 +644,24 @@ class GoogleAuthManager {
       (window as any).sentinelDesktop.openCompanionWindow('https://gemini.google.com/', 'persist:sentinel_gemini');
     } else {
       window.open('https://gemini.google.com/', '_blank');
+    }
+  }
+
+  public openChatGptDirect(): void {
+    const isDesktop = typeof (window as any).sentinelDesktop !== 'undefined' && !!(window as any).sentinelDesktop.isDesktop;
+    if (isDesktop && (window as any).sentinelDesktop?.openCompanionWindow) {
+      (window as any).sentinelDesktop.openCompanionWindow('https://chatgpt.com/', 'persist:sentinel_chatgpt');
+    } else {
+      window.open('https://chatgpt.com/', '_blank');
+    }
+  }
+
+  public openChatGptInBrowser(): void {
+    const isDesktop = typeof (window as any).sentinelDesktop !== 'undefined' && !!(window as any).sentinelDesktop.isDesktop;
+    if (isDesktop && (window as any).sentinelDesktop?.openExternal) {
+      (window as any).sentinelDesktop.openExternal('https://chatgpt.com/');
+    } else {
+      window.open('https://chatgpt.com/', '_blank');
     }
   }
 

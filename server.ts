@@ -150,9 +150,9 @@ app.post('/api/auth/google/session', (req: Request, res: Response) => {
   const { user, tokens, authMethod } = req.body || {};
   serverGoogleSession = {
     user: user || {
-      name: 'Patrick Jay F. Tanap, CPA, CICA',
-      email: 'pjftanap@gmail.com',
-      picture: 'https://lh3.googleusercontent.com/a/default-user',
+      name: req.body?.user?.name || 'Google Account User',
+      email: req.body?.user?.email || 'authenticated.user@google.com',
+      picture: req.body?.user?.picture || 'https://lh3.googleusercontent.com/a/default-user',
       verified_email: true,
     },
     tokens: tokens || {

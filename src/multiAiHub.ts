@@ -1254,14 +1254,68 @@ class MultiAiHubManager {
           (s) => `<option value="${s.id}" ${s.id === pane.serviceId ? 'selected' : ''}>${s.icon} ${s.shortName}</option>`
         ).join('');
 
-        // Embedded Browser Frame:
-        // CRITICAL SECURITY ENFORCEMENT: Google authentication (accounts.google.com) strictly blocks
-        // embedded webviews, iframes, and passkeys/WebAuthn ("Disallowed User-Agent").
-        // For Gemini, replace embedded iframe/webview with RFC 8252 Desktop Loopback Authentication.
+        // Active Google Session Details (Dynamic)
+        const googleState = googleAuth.getState();
+        const googleUser = googleState.user;
+        const isGoogleAuth = googleState.status === 'authenticated' && !!googleUser;
+
+        // Custom Dynamic SSO / Account Header Bar for AI services (Gemini, ChatGPT, Claude, Perplexity, Copilot)
+        let ssoHeaderBar = '';
+
+        if (['gemini', 'chatgpt', 'claude', 'perplexity'].includes(pane.serviceId)) {
+          if (isGoogleAuth && googleUser) {
+            ssoHeaderBar = `
+              <div class="px-3 py-1.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100 dark:from-emerald-950/80 dark:via-teal-950/80 dark:to-emerald-900/80 border-b border-emerald-300 dark:border-emerald-700 text-xs flex items-center justify-between gap-2 shrink-0 select-none shadow-2xs">
+                <div class="flex items-center gap-2 truncate">
+                  <div class="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 shadow-xs">
+                    ${googleUser.picture ? `<img src="${googleUser.picture}" class="w-full h-full rounded-full object-cover" onerror="this.remove()" />` : (googleUser.name || 'G').charAt(0).toUpperCase()}
+                  </div>
+                  <div class="flex items-center gap-1.5 truncate">
+                    <span class="font-bold text-emerald-950 dark:text-emerald-100 truncate">${googleUser.name || 'Google Account'}</span>
+                    <span class="text-[10px] text-emerald-700 dark:text-emerald-300 font-mono truncate">(${googleUser.email || 'active'})</span>
+                  </div>
+                  <span class="hidden sm:inline-block text-[9px] px-2 py-0.2 rounded-full bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 font-mono font-bold shrink-0">✓ Google Account Ready</span>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="px-2.5 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition cursor-pointer shadow-2xs flex items-center gap-1">
+                    <span>🔑</span> Log In / Continue ${service.shortName}
+                  </button>
+                  <button onclick="window.multiAiHub.reloadPane('${pane.id}')" class="px-2 py-0.5 rounded-lg bg-gray-200 dark:bg-intel-800 text-gray-800 dark:text-slate-200 font-bold text-[10px] transition cursor-pointer">
+                    🔄 Reload
+                  </button>
+                </div>
+              </div>
+            `;
+          } else {
+            ssoHeaderBar = `
+              <div class="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/80 border-b border-amber-300 dark:border-amber-700 text-xs flex items-center justify-between gap-2 shrink-0 select-none">
+                <div class="flex items-center gap-2 truncate">
+                  <span class="text-amber-600 dark:text-amber-400 font-bold">${service.icon} ${service.name}:</span>
+                  <span class="text-amber-900 dark:text-amber-200 text-[11px] truncate">Use your Google Account for ${service.shortName} SSO</span>
+                </div>
+                <button onclick="window.googleAuth.signIn()" class="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1">
+                  <span>🔑</span> Sign in with Google
+                </button>
+              </div>
+            `;
+          }
+        } else if (pane.serviceId === 'copilot') {
+          ssoHeaderBar = `
+            <div class="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/80 border-b border-blue-200 dark:border-blue-800 text-xs flex items-center justify-between gap-2 shrink-0 select-none">
+              <div class="flex items-center gap-2 truncate">
+                <span class="text-blue-700 dark:text-blue-300 font-bold">🔵 Microsoft Copilot:</span>
+                <span class="text-blue-900 dark:text-blue-200 text-[11px] truncate">Microsoft 365 Work, School, or Personal Account SSO</span>
+              </div>
+              <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1">
+                <span>🔑</span> Log In with Microsoft
+              </button>
+            </div>
+          `;
+        }
+
+        // Embedded Live Browser Frame for all services
         let browserElement = '';
-        if (pane.serviceId === 'gemini') {
-          browserElement = googleAuth.generateGeminiPaneHtml();
-        } else if (isDesktop) {
+        if (isDesktop) {
           browserElement = `
             <webview
               id="browser_frame_${pane.id}"
@@ -1274,7 +1328,7 @@ class MultiAiHubManager {
             ></webview>
           `;
         } else {
-          // Web preview mode: resilient iframe with fallback helper banner
+          // Web preview mode: resilient iframe with live companion helper
           browserElement = `
             <div class="w-full h-full relative flex flex-col bg-white">
               <iframe
@@ -1288,7 +1342,8 @@ class MultiAiHubManager {
               <div class="px-3 py-1.5 bg-gray-50 dark:bg-intel-900 border-t border-gray-200 dark:border-intel-border text-[11px] flex items-center justify-between text-gray-700 dark:text-slate-300">
                 <span class="flex items-center gap-1.5 truncate">
                   <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span class="font-semibold">${service.name} Session</span>
+                  <span class="font-semibold">${service.name} Live Session</span>
+                  ${isGoogleAuth && (pane.serviceId === 'gemini' || pane.serviceId === 'chatgpt') ? `<span class="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono font-bold">(${googleUser?.email})</span>` : ''}
                 </span>
                 <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="px-2 py-0.5 rounded bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1">
                   <span>↗</span> Popout Window
@@ -1325,6 +1380,7 @@ class MultiAiHubManager {
             class="flex flex-col bg-white dark:bg-[#1e1f23] border border-gray-300 dark:border-intel-border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow relative min-w-0 min-h-0"
           >
             ${singleFocusBar}
+            ${ssoHeaderBar}
             <!-- PANE BROWSER TOP NAVIGATION & CONTROLS -->
             <div class="p-2 border-b border-gray-200 dark:border-intel-border bg-gray-50 dark:bg-[#25262b] flex items-center justify-between gap-1.5 shrink-0">
               <!-- Left: Service Selector & Logo -->
