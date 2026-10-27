@@ -18,10 +18,36 @@ app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('enable-unsafe-webgpu');
 app.commandLine.appendSwitch('enable-features', 'Vulkan,WebGPU');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('disable-features', 'WebAuthentication,WebAuthenticationConditionalUI');
 
 const PERSISTENT_SESSION_PARTITION = 'persist:sentinel_ai_workspace';
 const CHROME_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+const DISABLE_PASSKEY_INJECTION = `
+  (() => {
+    try {
+      if ('PublicKeyCredential' in window) {
+        Object.defineProperty(window, 'PublicKeyCredential', {
+          get: () => undefined,
+          configurable: true
+        });
+      }
+
+      if (navigator.credentials && navigator.credentials.get) {
+        const originalGet = navigator.credentials.get.bind(navigator.credentials);
+        navigator.credentials.get = function(options) {
+          if (options && (options.publicKey || options.mediation === 'conditional')) {
+            return Promise.reject(new DOMException("WebAuthn platform authenticators are not supported in this client environment.", "NotSupportedError"));
+          }
+          return originalGet(options);
+        };
+      }
+    } catch (e) {
+      console.warn("Passkey suppression notice:", e);
+    }
+  })();
+`;
 
 // Default Desktop OAuth Client ID (Can be overridden via settings or env)
 const DEFAULT_GOOGLE_CLIENT_ID =
@@ -305,6 +331,21 @@ function createWindow() {
       configurePartitionHeaders(s);
     } catch (_e) {
       // Continue
+    }
+  });
+
+  // Attach WebAuthn passkey suppression script to webviews & child auth popups
+  mainWindow.webContents.on('did-attach-webview', (event, webContents) => {
+    webContents.on('dom-ready', () => {
+      webContents.executeJavaScript(DISABLE_PASSKEY_INJECTION).catch(() => {});
+    });
+  });
+
+  app.on('browser-window-created', (event, childWindow) => {
+    if (childWindow !== mainWindow) {
+      childWindow.webContents.on('dom-ready', () => {
+        childWindow.webContents.executeJavaScript(DISABLE_PASSKEY_INJECTION).catch(() => {});
+      });
     }
   });
 
