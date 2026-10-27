@@ -186,6 +186,17 @@ class GoogleAuthManager {
           this.saveSession();
           this.notify();
           this.showToast(`Signed in successfully as ${result.user.name}`);
+
+          // Automatically navigate embedded Gemini pane inside Sentinel Studio main window
+          if (typeof (window as any).multiAiHub?.navigatePane === 'function') {
+            try {
+              const panes = (window as any).multiAiHub.state?.panes || [];
+              const geminiPane = panes.find((p: any) => p.serviceId === 'gemini');
+              if (geminiPane) {
+                (window as any).multiAiHub.navigatePane(geminiPane.id, 'https://gemini.google.com/');
+              }
+            } catch (_e) {}
+          }
           return true;
         } else {
           if (result?.canceled) {
@@ -556,20 +567,13 @@ class GoogleAuthManager {
             </div>
 
             <!-- Gemini Direct Workstation Actions -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
+            <div class="grid grid-cols-1 gap-2.5 pt-2">
               <button
-                onclick="window.googleAuth.openGeminiDirect()"
-                class="p-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow transition flex items-center justify-center gap-2 cursor-pointer"
+                onclick="if(window.multiAiHub){ const p = window.multiAiHub.state?.panes?.find((pane)=>pane.serviceId==='gemini'); if(p) window.multiAiHub.navigatePane(p.id, 'https://gemini.google.com/'); }"
+                class="p-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>✨</span>
-                <span>Launch Gemini Workstation</span>
-              </button>
-              <button
-                onclick="window.googleAuth.openGeminiInBrowser()"
-                class="p-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-intel-800 dark:hover:bg-intel-750 text-gray-900 dark:text-white font-bold text-xs border border-gray-300 dark:border-intel-border transition flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span>↗</span>
-                <span>Open in External Browser</span>
+                <span>Run Gemini Inside Sentinel Studio Main Window</span>
               </button>
             </div>
           </div>

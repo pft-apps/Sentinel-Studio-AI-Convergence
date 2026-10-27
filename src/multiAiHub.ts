@@ -1270,10 +1270,13 @@ class MultiAiHubManager {
                   <span class="hidden sm:inline-block text-[9px] px-2 py-0.2 rounded-full bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 font-mono font-bold shrink-0">✓ Google Account Connected</span>
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0">
-                  <button onclick="window.multiAiHub.navigatePane('${pane.id}', '${service.defaultUrl}')" class="px-2.5 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition cursor-pointer shadow-2xs flex items-center gap-1">
-                    <span>🔑</span> Log In / Continue ${service.shortName}
+                  <button onclick="window.multiAiHub.navigatePane('${pane.id}', '${service.defaultUrl}')" class="px-2.5 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition cursor-pointer shadow-2xs flex items-center gap-1" title="Continue to ${service.name} in embedded pane">
+                    <span>🌐</span> Open Pane
                   </button>
-                  <button onclick="window.multiAiHub.reloadPane('${pane.id}')" class="px-2 py-0.5 rounded-lg bg-gray-200 dark:bg-intel-800 text-gray-800 dark:text-slate-200 font-bold text-[10px] transition cursor-pointer">
+                  <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="px-2.5 py-0.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] transition cursor-pointer shadow-2xs flex items-center gap-1" title="Popout into Passkey-Safe login window (resolves Google Passkey / WebAuthn prompts)">
+                    <span>↗</span> Popout Window
+                  </button>
+                  <button onclick="window.multiAiHub.reloadPane('${pane.id}')" class="px-2 py-0.5 rounded-lg bg-gray-200 dark:bg-intel-800 text-gray-800 dark:text-slate-200 font-bold text-[10px] transition cursor-pointer" title="Reload browser pane">
                     🔄 Reload
                   </button>
                 </div>
@@ -1284,14 +1287,17 @@ class MultiAiHubManager {
               <div class="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/80 border-b border-amber-300 dark:border-amber-700 text-xs flex items-center justify-between gap-2 shrink-0 select-none">
                 <div class="flex items-center gap-2 truncate">
                   <span class="text-amber-600 dark:text-amber-400 font-bold">${service.icon} ${service.name}:</span>
-                  <span class="text-amber-900 dark:text-amber-200 text-[11px] truncate">Sign in directly inside this pane with your account</span>
+                  <span class="text-amber-900 dark:text-amber-200 text-[11px] truncate">Use Google OAuth or Popout Window for Passkey-Safe Login</span>
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0">
-                  <button onclick="window.multiAiHub.navigatePane('${pane.id}', '${service.defaultUrl}')" class="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1">
-                    <span>🔑</span> Log In / Open ${service.shortName}
+                  <button onclick="window.googleAuth.signIn()" class="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1" title="Sign in via Google OAuth Loopback (PKCE) with system browser">
+                    <span>🛡️</span> Google OAuth
                   </button>
-                  <button onclick="window.googleAuth.signIn()" class="px-2.5 py-1 rounded-lg bg-amber-200 dark:bg-amber-900 text-amber-950 dark:text-amber-100 text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1">
-                    <span>🌐</span> Google SSO
+                  <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1" title="Open Passkey-Safe Standalone Login Window (FIDO2/WebAuthn enabled)">
+                    <span>↗</span> Popout Login
+                  </button>
+                  <button onclick="window.multiAiHub.navigatePane('${pane.id}', '${service.defaultUrl}')" class="px-2.5 py-1 rounded-lg bg-gray-200 dark:bg-intel-800 text-gray-800 dark:text-slate-200 text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1" title="Open web login directly inside pane">
+                    <span>🌐</span> Open Pane
                   </button>
                 </div>
               </div>
@@ -1304,9 +1310,14 @@ class MultiAiHubManager {
                 <span class="text-blue-700 dark:text-blue-300 font-bold">🔵 Microsoft Copilot:</span>
                 <span class="text-blue-900 dark:text-blue-200 text-[11px] truncate">Microsoft 365 Work, School, or Personal Account SSO</span>
               </div>
-              <button onclick="window.multiAiHub.navigatePane('${pane.id}', '${service.defaultUrl}')" class="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1">
-                <span>🔑</span> Log In with Microsoft
-              </button>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <button onclick="window.multiAiHub.navigatePane('${pane.id}', '${service.defaultUrl}')" class="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1">
+                  <span>🔑</span> Log In with Microsoft
+                </button>
+                <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1" title="Open Passkey/2FA-Safe Login Window">
+                  <span>↗</span> Popout Login
+                </button>
+              </div>
             </div>
           `;
         }
