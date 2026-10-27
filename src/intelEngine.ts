@@ -13121,6 +13121,15 @@ export function startIntelStudio() {
   initPersistentMemoryAndVault();
   initCapabilitiesArchitecture().catch((err) => console.error('Capabilities Architecture Init Failed:', err));
   initMultiAiWorkstation();
+  
+  // Wire Privacy Modal Close Handlers
+  document.getElementById('closePrivacyModalBtn')?.addEventListener('click', () => {
+    document.getElementById('privacyModal')?.classList.add('hidden');
+  });
+  document.getElementById('closePrivacyModalXBtn')?.addEventListener('click', () => {
+    document.getElementById('privacyModal')?.classList.add('hidden');
+  });
+
   initDeviceSecurity().catch(err => {
     console.error('Security Init Failed:', err);
     unlockWorkspace(); // Fail open for usability if security crashes
