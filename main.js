@@ -13,6 +13,13 @@ const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 
+// 1. GLOBAL FLAGS BEFORE APP READY (Google SecAuth & Automation Masking)
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+app.commandLine.appendSwitch('disable-features', 'WebAuthentication,WebAuthenticationConditionalUI');
+const REAL_CHROME_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
+app.userAgentFallback = REAL_CHROME_UA;
+
 // Hardware Acceleration, WebGPU, and sRGB Profile Alignment
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('enable-unsafe-webgpu');
@@ -20,8 +27,6 @@ app.commandLine.appendSwitch('enable-features', 'Vulkan,WebGPU');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
 const PERSISTENT_SESSION_PARTITION = 'persist:sentinel_ai_workspace';
-const CHROME_USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
 
 // Default Desktop OAuth Client ID (Can be overridden via settings or env)
 const DEFAULT_GOOGLE_CLIENT_ID =
@@ -227,11 +232,12 @@ function getErrorHtmlPage(errorMsg) {
 </html>`;
 }
 
+// 2. SESSION HEADERS & CLIENT HINTS
 function configurePartitionHeaders(targetSession) {
   if (!targetSession) return;
 
   try {
-    targetSession.setUserAgent(CHROME_USER_AGENT);
+    targetSession.setUserAgent(REAL_CHROME_UA);
   } catch (_e) {}
 
   // Enforce permissions in targetSession.setPermissionRequestHandler
@@ -250,7 +256,10 @@ function configurePartitionHeaders(targetSession) {
 
   targetSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
     const requestHeaders = { ...details.requestHeaders };
-    requestHeaders['User-Agent'] = CHROME_USER_AGENT;
+    requestHeaders['User-Agent'] = REAL_CHROME_UA;
+    requestHeaders['Sec-CH-UA'] = '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"';
+    requestHeaders['Sec-CH-UA-Mobile'] = '?0';
+    requestHeaders['Sec-CH-UA-Platform'] = '"Windows"';
     callback({ cancel: false, requestHeaders });
   });
 
@@ -297,9 +306,18 @@ function createWindow() {
   const aiWorkspaceSession = session.fromPartition(PERSISTENT_SESSION_PARTITION);
   configurePartitionHeaders(aiWorkspaceSession);
 
-  // Configure mainWindow.webContents.setWindowOpenHandler
+  // 3. MASK AUTOMATION ON WEBVIEWS
+  mainWindow.webContents.on('did-attach-webview', (_event, webContents) => {
+    webContents.setUserAgent(REAL_CHROME_UA);
+    const maskScript = "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });";
+    webContents.executeJavaScript(maskScript).catch(() => {});
+    webContents.on('dom-ready', () => {
+      webContents.executeJavaScript(maskScript).catch(() => {});
+    });
+  });
+
+  // 4. POPUP PARTITION INHERITANCE
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    // For OAuth/SSO URLs:
     if (
       url.includes('accounts.google.com') ||
       url.includes('login.microsoftonline.com') ||
@@ -322,7 +340,6 @@ function createWindow() {
       };
     }
 
-    // For URLs with intent://, workstation, or custom protocols
     if (url.startsWith('intent://') || url.includes('workstation') || (url.includes('://') && !url.startsWith('http'))) {
       mainWindow.webContents.send('auth:redirect-webview', { url });
       return { action: 'deny' };
