@@ -8,6 +8,7 @@
     "dev": "tsx server.ts",
     "start": "node server.ts",
     "electron": "electron .",
+    "prepack": "npm run build",
     "pack": "electron-builder --dir --win --x64",
     "build": "vite build",
     "preview": "vite preview",

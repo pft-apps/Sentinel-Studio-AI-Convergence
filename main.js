@@ -284,6 +284,7 @@ function configurePartitionHeaders(targetSession) {
         });
       }
     });
+    callback({ cancel: false, responseHeaders });
   });
 }
 
@@ -388,8 +389,31 @@ function createWindow() {
     }
   });
 
-  // Directly load the single-file HTML compiled by viteSingleFile
-  mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+  // Robust HTML loading with fallback to root index.html
+  const distHtmlPath = path.join(__dirname, 'dist', 'index.html');
+  const rootHtmlPath = path.join(__dirname, 'index.html');
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Electron] Window failed to load (${errorCode}): ${errorDescription} at ${validatedURL}`);
+    if (fs.existsSync(rootHtmlPath) && !validatedURL.endsWith('index.html')) {
+      mainWindow.loadFile(rootHtmlPath).catch(() => {});
+    }
+  });
+
+  if (fs.existsSync(distHtmlPath)) {
+    mainWindow.loadFile(distHtmlPath).catch((err) => {
+      console.error('Failed to load dist/index.html:', err);
+      if (fs.existsSync(rootHtmlPath)) {
+        mainWindow.loadFile(rootHtmlPath).catch((e) => console.error('Fallback load error:', e));
+      }
+    });
+  } else if (fs.existsSync(rootHtmlPath)) {
+    mainWindow.loadFile(rootHtmlPath).catch((err) => {
+      console.error('Failed to load root index.html:', err);
+    });
+  } else {
+    console.error('CRITICAL: No index.html found in dist/ or application root directory!');
+  }
 
   return mainWindow;
 }
