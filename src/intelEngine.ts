@@ -829,7 +829,7 @@ function getActiveUserProfile() {
     (window.O && window.O.userProfile && window.O.userProfile.name) ||
     (document.getElementById('settingsProfileName') as HTMLInputElement | null)?.value ||
     (document.getElementById('settingsUserNameInput') as HTMLInputElement | null)?.value ||
-    'Authorized User';
+    'Patrick Jay F. Tanap, CPA, CICA';
 
   const currentUserRole =
     localStorage.getItem('sentinel_profile_title') ||
@@ -837,7 +837,7 @@ function getActiveUserProfile() {
     (window.O && window.O.userProfile && window.O.userProfile.title) ||
     (document.getElementById('settingsProfileTitle') as HTMLInputElement | null)?.value ||
     (document.getElementById('settingsUserTitleInput') as HTMLInputElement | null)?.value ||
-    'Department Lead';
+    'Head, Combined ERI & EPEx';
 
   const currentDept =
     localStorage.getItem('sentinel_profile_dept') ||
@@ -845,7 +845,7 @@ function getActiveUserProfile() {
     (window.O && window.O.userProfile && window.O.userProfile.dept) ||
     (document.getElementById('settingsProfileDept') as HTMLInputElement | null)?.value ||
     (document.getElementById('settingsUserDeptInput') as HTMLInputElement | null)?.value ||
-    'Enterprise Shared Services';
+    'Filinvest Business Services Corporation – Enterprise Capability Hub';
 
   return { currentUserName, currentUserRole, currentDept };
 }

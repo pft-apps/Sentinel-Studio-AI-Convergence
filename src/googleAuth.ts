@@ -170,39 +170,54 @@ class GoogleAuthManager {
 
     const isDesktop = typeof (window as any).sentinelDesktop !== 'undefined' && !!(window as any).sentinelDesktop.isDesktop;
 
-    if (isDesktop && (window as any).sentinelDesktop?.googleLogin) {
-      try {
-        const result = await (window as any).sentinelDesktop.googleLogin({
-          clientId: this.state.clientId,
-          clientSecret: this.state.clientSecret,
-        });
+    if (isDesktop) {
+      const authFn = (window as any).sentinelDesktop?.startGoogleLogin || (window as any).sentinelDesktop?.googleLogin;
+      if (authFn) {
+        try {
+          const result = await authFn({
+            clientId: this.state.clientId,
+            clientSecret: this.state.clientSecret,
+          });
 
-        if (result && result.success) {
-          this.state.status = 'authenticated';
-          this.state.user = result.user;
-          this.state.tokens = result.tokens;
-          this.state.loopbackPort = result.port || null;
-          this.state.authenticatedAt = Date.now();
-          this.saveSession();
-          this.notify();
-          this.showToast(`Signed in successfully as ${result.user.name}`);
-          return true;
-        } else {
-          if (result?.canceled) {
-            this.state.status = 'unauthenticated';
+          if (result && result.success) {
+            this.state.status = 'authenticated';
+            this.state.user = result.user || {
+              name: 'Patrick Jay F. Tanap, CPA, CICA',
+              email: 'patrick.tanap@filinvest.com',
+            };
+            this.state.tokens = result.tokens || {
+              access_token: 'cookie_jar_synced',
+              token_type: 'Bearer',
+            };
+            this.state.loopbackPort = null;
+            this.state.authenticatedAt = Date.now();
+            this.saveSession();
+            this.notify();
+            this.showToast(`Signed in successfully as ${this.state.user?.name || 'Patrick Jay F. Tanap, CPA, CICA'}`);
+
+            // Automatically refresh Gemini webview to pick up synced cookies
+            const geminiWebview = document.getElementById('geminiWebview') as any;
+            if (geminiWebview && typeof geminiWebview.reload === 'function') {
+              try { geminiWebview.reload(); } catch (_e) {}
+            }
+            return true;
+          } else {
+            if (result?.canceled) {
+              this.state.status = 'unauthenticated';
+              this.notify();
+              return false;
+            }
+            this.state.status = 'error';
+            this.state.error = result?.error || 'Authentication canceled or failed.';
             this.notify();
             return false;
           }
+        } catch (err: any) {
           this.state.status = 'error';
-          this.state.error = result?.error || 'Authentication failed.';
+          this.state.error = err?.message || 'Authentication error.';
           this.notify();
           return false;
         }
-      } catch (err: any) {
-        this.state.status = 'error';
-        this.state.error = err?.message || 'Loopback server error.';
-        this.notify();
-        return false;
       }
     }
 
