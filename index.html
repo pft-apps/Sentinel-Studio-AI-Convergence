@@ -202,7 +202,7 @@
         }
       };
 
-      // Desktop Runtime Indicator Hook & Desktop Auth Redirect Listener
+      // Desktop Runtime Indicator & Auth WebView Redirect Hook
       document.addEventListener('DOMContentLoaded', function() {
         if (isDesktop) {
           const badge = document.getElementById('desktopStatusIndicator');
@@ -214,39 +214,15 @@
 
         if (window.sentinelDesktop && typeof window.sentinelDesktop.onAuthRedirect === 'function') {
           window.sentinelDesktop.onAuthRedirect((data) => {
-            if (data.engine === 'gemini') {
-              const geminiView = document.getElementById('geminiWebview');
-              if (geminiView) {
-                geminiView.src = data.url || 'https://gemini.google.com/app';
-              }
+            if (!data) return;
+            const wv = document.getElementById(`${data.engine}Webview`);
+            if (wv) {
+              wv.src = data.url;
+            } else if (data.engine && window.multiAiHub && typeof window.multiAiHub.navigatePane === 'function') {
+              window.multiAiHub.navigatePane(`pane_${data.engine}`, data.url);
             }
           });
         }
-
-        function setupGeminiWebviewGuard() {
-          const geminiView = document.getElementById('geminiWebview');
-          if (geminiView && !geminiView.__guarded) {
-            geminiView.__guarded = true;
-            geminiView.addEventListener('will-navigate', (e) => {
-              if (e.url.includes('accounts.google.com') || e.url.includes('accounts.youtube.com')) {
-                // Passkeys fail inside embedded webviews due to Chromium WebAuthn sandbox policy.
-                // Open in default system browser for 100% passkey / Windows Hello / Touch ID compatibility!
-                if (window.sentinelDesktop && typeof window.sentinelDesktop.openExternal === 'function') {
-                  e.preventDefault();
-                  window.sentinelDesktop.openExternal(e.url);
-                }
-              }
-            });
-            geminiView.addEventListener('new-window', (e) => {
-              if (e.url.includes('gemini.google.com') || e.url.includes('workstation')) {
-                e.preventDefault();
-                geminiView.src = 'https://gemini.google.com/app';
-              }
-            });
-          }
-        }
-
-        setInterval(setupGeminiWebviewGuard, 1000);
       });
     })();
   </script>

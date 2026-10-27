@@ -54,9 +54,9 @@ export const AI_SERVICES: AiServiceConfig[] = [
     shortName: 'MS Copilot',
     icon: '🔵',
     badge: 'M365 Enterprise & Personal',
-    defaultUrl: 'https://copilot.microsoft.com/',
+    defaultUrl: 'https://copilot.microsoft.com',
     color: '#0078D4',
-    partition: 'persist:sentinel_copilot',
+    partition: 'persist:sentinel_ai_workspace',
     description: 'Sign in with your Microsoft 365 Work, School, or Personal Account for M365 grounding and enterprise data protection.',
     authTip: 'Supports Microsoft Entra ID (Work/School SSO), Personal MSA, and Commercial Data Protection.',
     placeholderTip: 'Ask Copilot for web-grounded research, Excel formulas, PowerPoint outlines, or Word policies...',
@@ -67,9 +67,9 @@ export const AI_SERVICES: AiServiceConfig[] = [
     shortName: 'Google Gemini',
     icon: '✨',
     badge: 'Gemini Advanced & Workspace',
-    defaultUrl: 'https://gemini.google.com/',
+    defaultUrl: 'https://gemini.google.com/app',
     color: '#1A73E8',
-    partition: 'persist:sentinel_gemini',
+    partition: 'persist:sentinel_ai_workspace',
     description: 'Sign in with your Google or Google Workspace Account for Gemini 2.5 Pro, Deep Research, and Drive integration.',
     authTip: 'Supports Google Workspace, personal Gmail, and YouTube/Docs/Drive multimodal extensions.',
     placeholderTip: 'Ask Gemini for deep research, large-document synthesis, coding, and multimodal analysis...',
@@ -80,9 +80,9 @@ export const AI_SERVICES: AiServiceConfig[] = [
     shortName: 'ChatGPT',
     icon: '🟢',
     badge: 'Plus, Team & Enterprise',
-    defaultUrl: 'https://chatgpt.com/',
+    defaultUrl: 'https://chatgpt.com',
     color: '#10A37F',
-    partition: 'persist:sentinel_chatgpt',
+    partition: 'persist:sentinel_ai_workspace',
     description: 'Sign in with your OpenAI subscription to access GPT-4o, o1 reasoning models, Canvas workspace, and Custom GPTs.',
     authTip: 'Supports ChatGPT Plus, Team, Enterprise, and Google/Microsoft SSO logins.',
     placeholderTip: 'Prompt ChatGPT for complex reasoning, data analytics, Canvas editing, and specialized GPTs...',
@@ -93,9 +93,9 @@ export const AI_SERVICES: AiServiceConfig[] = [
     shortName: 'Claude',
     icon: '🟠',
     badge: 'Claude 3.7 Sonnet',
-    defaultUrl: 'https://claude.ai/',
+    defaultUrl: 'https://claude.ai',
     color: '#D97706',
-    partition: 'persist:sentinel_claude',
+    partition: 'persist:sentinel_ai_workspace',
     description: 'Sign in with your Anthropic account for extended hybrid thinking, Artifacts preview, and nuanced writing.',
     authTip: 'Supports Claude Pro, Team, and Google Sign-In with persistent session auth.',
     placeholderTip: 'Ask Claude for deep architectural reviews, legal contract auditing, and Artifact generation...',
@@ -106,9 +106,9 @@ export const AI_SERVICES: AiServiceConfig[] = [
     shortName: 'Perplexity',
     icon: '🟣',
     badge: 'Pro Search & Citations',
-    defaultUrl: 'https://www.perplexity.ai/',
+    defaultUrl: 'https://www.perplexity.ai',
     color: '#8B5CF6',
-    partition: 'persist:sentinel_perplexity',
+    partition: 'persist:sentinel_ai_workspace',
     description: 'Sign in for cited real-time web discovery, academic search, financial filings, and Deep Research reports.',
     authTip: 'Supports Perplexity Pro, Google SSO, and Apple ID logins.',
     placeholderTip: 'Search for live statutory rulings, regulatory issuances, financial filings, or current market facts...',
@@ -121,7 +121,7 @@ export const AI_SERVICES: AiServiceConfig[] = [
     badge: 'Any AI Service',
     defaultUrl: 'https://chat.deepseek.com/',
     color: '#4F46E5',
-    partition: 'persist:sentinel_custom',
+    partition: 'persist:sentinel_ai_workspace',
     description: 'Connect to any web AI subscription portal: DeepSeek, Poe, Mistral Le Chat, HuggingChat, or internal enterprise models.',
     authTip: 'Any standard HTTPS URL with full cookie and session persistence.',
     placeholderTip: 'Enter any AI portal or custom web endpoint URL...',
@@ -130,7 +130,7 @@ export const AI_SERVICES: AiServiceConfig[] = [
 
 const STORAGE_KEY = 'sentinel_multi_ai_state_v1';
 const CHROME_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
 
 class MultiAiHubManager {
   private state: MultiAiStore;
@@ -469,7 +469,7 @@ class MultiAiHubManager {
     pane.title = service.name;
     this.saveState();
 
-    const frameEl = document.getElementById(`browser_frame_${paneId}`) as any;
+    const frameEl = (document.getElementById(`${pane.serviceId}Webview`) || document.getElementById(`browser_frame_${paneId}`)) as any;
     if (frameEl) {
       frameEl.src = service.defaultUrl;
     }
@@ -494,14 +494,15 @@ class MultiAiHubManager {
     pane.currentUrl = targetUrl;
     this.saveState();
 
-    const frameEl = document.getElementById(`browser_frame_${paneId}`) as any;
+    const frameEl = (document.getElementById(`${pane.serviceId}Webview`) || document.getElementById(`browser_frame_${paneId}`)) as any;
     if (frameEl) {
       frameEl.src = targetUrl;
     }
   }
 
   public reloadPane(paneId: string): void {
-    const frameEl = document.getElementById(`browser_frame_${paneId}`) as any;
+    const pane = this.state.panes.find((p) => p.id === paneId);
+    const frameEl = (pane ? document.getElementById(`${pane.serviceId}Webview`) : null) || (document.getElementById(`browser_frame_${paneId}`) as any);
     if (frameEl) {
       if (typeof frameEl.reload === 'function') {
         frameEl.reload();
@@ -533,7 +534,7 @@ class MultiAiHubManager {
     pane.zoomLevel = Math.max(0.6, Math.min(1.8, parseFloat((pane.zoomLevel + delta).toFixed(1))));
     this.saveState();
 
-    const frameEl = document.getElementById(`browser_frame_${paneId}`) as any;
+    const frameEl = (document.getElementById(`${pane.serviceId}Webview`) || document.getElementById(`browser_frame_${paneId}`)) as any;
     if (frameEl) {
       if (typeof frameEl.setZoomFactor === 'function') {
         frameEl.setZoomFactor(pane.zoomLevel);
@@ -1254,36 +1255,107 @@ class MultiAiHubManager {
           (s) => `<option value="${s.id}" ${s.id === pane.serviceId ? 'selected' : ''}>${s.icon} ${s.shortName}</option>`
         ).join('');
 
-        // Embedded Browser Frame:
-        // CRITICAL SECURITY ENFORCEMENT: Google authentication (accounts.google.com) strictly blocks
-        // embedded webviews, iframes, and passkeys/WebAuthn ("Disallowed User-Agent").
-        // For Gemini, replace embedded iframe/webview with RFC 8252 Desktop Loopback Authentication.
-        let browserElement = '';
+        // Active Google Session Details
+        const googleState = googleAuth.getState();
+        const googleUser = googleState.user;
+        const isGoogleAuth = googleState.status === 'authenticated' && !!googleUser;
+
+        // Custom SSO / Account Header Bar for Google-connected services (Gemini, ChatGPT)
+        let ssoHeaderBar = '';
+
         if (pane.serviceId === 'gemini') {
+          if (isGoogleAuth && googleUser) {
+            ssoHeaderBar = `
+              <div class="px-3 py-1.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100 dark:from-emerald-950/80 dark:via-teal-950/80 dark:to-emerald-900/80 border-b border-emerald-300 dark:border-emerald-700 text-xs flex items-center justify-between gap-2 shrink-0 select-none shadow-2xs">
+                <div class="flex items-center gap-2 truncate">
+                  <div class="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 shadow-xs">
+                    ${googleUser.picture ? `<img src="${googleUser.picture}" class="w-full h-full rounded-full object-cover" onerror="this.remove()" />` : (googleUser.name || 'G').charAt(0).toUpperCase()}
+                  </div>
+                  <div class="flex items-center gap-1.5 truncate">
+                    <span class="font-bold text-emerald-950 dark:text-emerald-100 truncate">${googleUser.name}</span>
+                    <span class="text-[10px] text-emerald-700 dark:text-emerald-300 font-mono truncate">(${googleUser.email})</span>
+                  </div>
+                  <span class="hidden sm:inline-block text-[9px] px-2 py-0.2 rounded-full bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 font-mono font-bold shrink-0">✓ Google Account Active</span>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button onclick="window.multiAiHub.reloadPane('${pane.id}')" class="px-2 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition cursor-pointer shadow-2xs">
+                    🔄 Reload
+                  </button>
+                  <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="px-2 py-0.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] transition cursor-pointer shadow-2xs">
+                    ↗ Popout Companion
+                  </button>
+                </div>
+              </div>
+            `;
+          } else {
+            ssoHeaderBar = `
+              <div class="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/80 border-b border-amber-300 dark:border-amber-700 text-xs flex items-center justify-between gap-2 shrink-0 select-none">
+                <div class="flex items-center gap-2 truncate">
+                  <span class="text-amber-600 dark:text-amber-400 font-bold">✨ Google Gemini:</span>
+                  <span class="text-amber-900 dark:text-amber-200 text-[11px] truncate">Connect your Google Account for Gemini Advanced</span>
+                </div>
+                <button onclick="window.googleAuth.signIn()" class="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1.5">
+                  <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24"><path fill="#ffffff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/></svg>
+                  <span>Sign in with Google</span>
+                </button>
+              </div>
+            `;
+          }
+        } else if (pane.serviceId === 'chatgpt') {
+          if (isGoogleAuth && googleUser) {
+            ssoHeaderBar = `
+              <div class="px-3 py-1.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100 dark:from-emerald-950/80 dark:via-teal-950/80 dark:to-emerald-900/80 border-b border-emerald-300 dark:border-emerald-700 text-xs flex items-center justify-between gap-2 shrink-0 select-none shadow-2xs">
+                <div class="flex items-center gap-2 truncate">
+                  <div class="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 shadow-xs">
+                    ${googleUser.picture ? `<img src="${googleUser.picture}" class="w-full h-full rounded-full object-cover" onerror="this.remove()" />` : (googleUser.name || 'G').charAt(0).toUpperCase()}
+                  </div>
+                  <div class="flex items-center gap-1.5 truncate">
+                    <span class="font-bold text-emerald-950 dark:text-emerald-100 truncate">ChatGPT Google SSO:</span>
+                    <span class="text-[10px] text-emerald-700 dark:text-emerald-300 font-mono truncate">${googleUser.email}</span>
+                  </div>
+                  <span class="hidden sm:inline-block text-[9px] px-2 py-0.2 rounded-full bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 font-mono font-bold shrink-0">✓ Google Credentials Ready</span>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="px-2.5 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition cursor-pointer shadow-2xs flex items-center gap-1">
+                    <span>🔑</span> Log In with Google (${googleUser.email})
+                  </button>
+                  <button onclick="window.multiAiHub.reloadPane('${pane.id}')" class="px-2 py-0.5 rounded-lg bg-gray-200 dark:bg-intel-800 text-gray-800 dark:text-slate-200 font-bold text-[10px] transition cursor-pointer">
+                    🔄 Reload
+                  </button>
+                </div>
+              </div>
+            `;
+          } else {
+            ssoHeaderBar = `
+              <div class="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 border-b border-emerald-200 dark:border-emerald-800 text-xs flex items-center justify-between gap-2 shrink-0 select-none">
+                <div class="flex items-center gap-2 truncate">
+                  <span class="text-emerald-700 dark:text-emerald-300 font-bold">🟢 OpenAI ChatGPT:</span>
+                  <span class="text-emerald-900 dark:text-emerald-200 text-[11px] truncate">Use Google Account for ChatGPT Plus & Team SSO</span>
+                </div>
+                <button onclick="window.googleAuth.signIn()" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1">
+                  <span>🔑</span> Sign in with Google Account
+                </button>
+              </div>
+            `;
+          }
+        }
+
+        // Embedded Live Browser Frame for all services
+        let browserElement = '';
+        if (isDesktop) {
           browserElement = `
             <webview
-              id="geminiWebview"
-              src="https://gemini.google.com/app"
+              id="${pane.serviceId}Webview"
+              src="${pane.currentUrl}"
               partition="persist:sentinel_ai_workspace"
+              useragent="${CHROME_UA}"
               allowpopups="true"
               webpreferences="contextIsolation=yes"
               class="w-full h-full border-0 bg-white"
             ></webview>
           `;
-        } else if (isDesktop) {
-          browserElement = `
-            <webview
-              id="browser_frame_${pane.id}"
-              src="${pane.currentUrl}"
-              partition="${service.partition}"
-              useragent="${CHROME_UA}"
-              allowpopups="true"
-              webpreferences="contextIsolation=false"
-              class="w-full h-full border-none bg-white"
-            ></webview>
-          `;
         } else {
-          // Web preview mode: resilient iframe with fallback helper banner
+          // Web preview mode: resilient iframe with live companion helper
           browserElement = `
             <div class="w-full h-full relative flex flex-col bg-white">
               <iframe
@@ -1297,7 +1369,8 @@ class MultiAiHubManager {
               <div class="px-3 py-1.5 bg-gray-50 dark:bg-intel-900 border-t border-gray-200 dark:border-intel-border text-[11px] flex items-center justify-between text-gray-700 dark:text-slate-300">
                 <span class="flex items-center gap-1.5 truncate">
                   <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span class="font-semibold">${service.name} Session</span>
+                  <span class="font-semibold">${service.name} Live Session</span>
+                  ${isGoogleAuth && (pane.serviceId === 'gemini' || pane.serviceId === 'chatgpt') ? `<span class="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono font-bold">(${googleUser?.email})</span>` : ''}
                 </span>
                 <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="px-2 py-0.5 rounded bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1">
                   <span>↗</span> Popout Window
@@ -1334,6 +1407,7 @@ class MultiAiHubManager {
             class="flex flex-col bg-white dark:bg-[#1e1f23] border border-gray-300 dark:border-intel-border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow relative min-w-0 min-h-0"
           >
             ${singleFocusBar}
+            ${ssoHeaderBar}
             <!-- PANE BROWSER TOP NAVIGATION & CONTROLS -->
             <div class="p-2 border-b border-gray-200 dark:border-intel-border bg-gray-50 dark:bg-[#25262b] flex items-center justify-between gap-1.5 shrink-0">
               <!-- Left: Service Selector & Logo -->
@@ -1369,12 +1443,6 @@ class MultiAiHubManager {
 
               <!-- Right: Zoom, Popout, Maximize, Remove -->
               <div class="flex items-center gap-1 shrink-0">
-                ${
-                  pane.serviceId === 'gemini'
-                    ? `<button type="button" onclick="if(window.sentinelDesktop && window.sentinelDesktop.openExternal) { window.sentinelDesktop.openExternal('https://accounts.google.com/InteractiveLogin?continue=https://gemini.google.com/app'); } else { window.open('https://accounts.google.com/InteractiveLogin?continue=https://gemini.google.com/app', '_blank'); }" class="px-2 py-1 text-[11px] rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 border border-amber-500/40 font-bold transition cursor-pointer" title="Sign in with Google Passkey in System Browser">🔑 Passkey Login</button>
-                       <button type="button" onclick="const wv = document.getElementById('geminiWebview'); if (wv) wv.src = 'https://gemini.google.com/app';" class="px-2 py-1 text-[11px] rounded bg-white/10 text-slate-300 hover:text-white hover:bg-white/20 transition cursor-pointer" title="Load Logged-in App">🔄 Open Logged-In Gemini</button>`
-                    : ''
-                }
                 <!-- Zoom Controls -->
                 <div class="hidden sm:flex items-center bg-gray-200/70 dark:bg-intel-850 rounded-lg p-0.5 border border-gray-300 dark:border-intel-border text-[10px]">
                   <button onclick="window.multiAiHub.zoomPane('${pane.id}', -0.1)" class="px-1.5 py-0.5 hover:bg-gray-300 dark:hover:bg-intel-800 rounded text-gray-700 dark:text-slate-300 cursor-pointer" title="Zoom Out">-</button>

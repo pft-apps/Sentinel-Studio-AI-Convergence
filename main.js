@@ -3,7 +3,7 @@
  * SENTINEL STUDIO™ — ELECTRON STANDALONE DESKTOP WORKSTATION
  * Enterprise Capability Hub & Multi-AI OS
  * Architect & Developer: Patrick Jay F. Tanap, CPA, CICA
- * Main Process, Partition Manager & Desktop OAuth 2.0 Loopback Engine
+ * Main Process, Partition Manager & Shared OAuth Engine
  * =====================================================================
  */
 
@@ -13,22 +13,23 @@ const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 
-// Hardware Acceleration, WebGPU, WebAuthn Passkeys, and sRGB Profile Alignment
+// Hardware Acceleration, WebGPU, and sRGB Profile Alignment
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('enable-unsafe-webgpu');
-app.commandLine.appendSwitch('enable-features', 'Vulkan,WebGPU,WebAuthentication,WebAuthenticationNewPasskeyUI');
-app.commandLine.appendSwitch('disable-features', 'UserAgentClientHint');
+app.commandLine.appendSwitch('enable-features', 'Vulkan,WebGPU');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
 const PERSISTENT_SESSION_PARTITION = 'persist:sentinel_ai_workspace';
 const CHROME_USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
 
 // Default Desktop OAuth Client ID (Can be overridden via settings or env)
 const DEFAULT_GOOGLE_CLIENT_ID =
   process.env.GOOGLE_CLIENT_ID ||
   process.env.VITE_GOOGLE_CLIENT_ID ||
   '902341258674-desktop-sentinel-studio.apps.googleusercontent.com';
+
+let mainWindow = null;
 
 /**
  * =====================================================================
@@ -177,7 +178,6 @@ function getSuccessHtmlPage(userName = 'Authenticated User') {
     </div>
   </div>
   <script>
-    // Automatically attempt to close tab after 4 seconds
     setTimeout(() => {
       try { window.close(); } catch(e) {}
     }, 4000);
@@ -229,28 +229,28 @@ function getErrorHtmlPage(errorMsg) {
 
 function configurePartitionHeaders(targetSession) {
   if (!targetSession) return;
+
   try {
     targetSession.setUserAgent(CHROME_USER_AGENT);
-  } catch (_e) {
-    // Ignore
-  }
+  } catch (_e) {}
+
+  // Enforce permissions in targetSession.setPermissionRequestHandler
+  try {
+    targetSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+      const allowedPermissions = ['clipboard-read', 'clipboard-sanitized-write', 'media', 'notifications'];
+      if (allowedPermissions.includes(permission)) {
+        callback(true);
+      } else {
+        callback(true);
+      }
+    });
+  } catch (_e) {}
 
   const filter = { urls: ['*://*/*'] };
 
   targetSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
     const requestHeaders = { ...details.requestHeaders };
     requestHeaders['User-Agent'] = CHROME_USER_AGENT;
-    delete requestHeaders['Sec-Ch-Ua'];
-    delete requestHeaders['Sec-Ch-Ua-Mobile'];
-    delete requestHeaders['Sec-Ch-Ua-Platform'];
-    delete requestHeaders['sec-ch-ua'];
-    delete requestHeaders['sec-ch-ua-mobile'];
-    delete requestHeaders['sec-ch-ua-platform'];
-
-    requestHeaders['Sec-Ch-Ua'] = '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"';
-    requestHeaders['Sec-Ch-Ua-Mobile'] = '?0';
-    requestHeaders['Sec-Ch-Ua-Platform'] = '"Windows"';
-
     callback({ cancel: false, requestHeaders });
   });
 
@@ -271,17 +271,7 @@ function configurePartitionHeaders(targetSession) {
     });
     callback({ cancel: false, responseHeaders });
   });
-
-  // Intercept any attempted in-webview navigation to accounts.google.com if needed
-  targetSession.webRequest.onBeforeRequest(
-    { urls: ['https://accounts.youtube.com/*'] },
-    (details, callback) => {
-      callback({ cancel: false });
-    }
-  );
 }
-
-let mainWindow = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -295,65 +285,64 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
+      partition: PERSISTENT_SESSION_PARTITION,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
 
   mainWindow.setMenuBarVisibility(false);
 
-  // Configure all partitions including default and AI workspace partitions
+  // Configure default session and persistent partition headers
   configurePartitionHeaders(session.defaultSession);
   const aiWorkspaceSession = session.fromPartition(PERSISTENT_SESSION_PARTITION);
   configurePartitionHeaders(aiWorkspaceSession);
 
-  // Pre-configure specific AI subscription persistent partitions
-  ['copilot', 'gemini', 'chatgpt', 'claude', 'perplexity'].forEach((id) => {
-    try {
-      const s = session.fromPartition(`persist:sentinel_${id}`);
-      configurePartitionHeaders(s);
-    } catch (_e) {
-      // Continue
-    }
-  });
-
-  // Intercept window open calls: Block external workstation popups and redirect webview, allow OAuth popups
+  // Configure mainWindow.webContents.setWindowOpenHandler
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.includes('gemini.google.com') || url.includes('workstation') || url.startsWith('intent://')) {
-      mainWindow.webContents.send('auth:redirect-webview', { engine: 'gemini', url: 'https://gemini.google.com/app' });
-      return { action: 'deny' };
-    }
+    // For OAuth/SSO URLs:
     if (
       url.includes('accounts.google.com') ||
       url.includes('login.microsoftonline.com') ||
+      url.includes('appleid.apple.com') ||
       url.includes('auth') ||
       url.includes('login')
     ) {
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
-          width: 550,
+          width: 580,
           height: 750,
-          title: 'Workspace Authentication',
           autoHideMenuBar: true,
           webPreferences: {
-            partition: 'persist:sentinel_ai_workspace',
+            partition: PERSISTENT_SESSION_PARTITION,
             contextIsolation: true,
             nodeIntegration: false,
           },
         },
       };
     }
+
+    // For URLs with intent://, workstation, or custom protocols
+    if (url.startsWith('intent://') || url.includes('workstation') || (url.includes('://') && !url.startsWith('http'))) {
+      mainWindow.webContents.send('auth:redirect-webview', { url });
+      return { action: 'deny' };
+    }
+
     return {
       action: 'allow',
       overrideBrowserWindowOptions: {
-        width: 600,
+        width: 580,
         height: 750,
         autoHideMenuBar: true,
+        webPreferences: {
+          partition: PERSISTENT_SESSION_PARTITION,
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
       },
     };
   });
 
-  // Directly load the single-file HTML compiled by viteSingleFile
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
 
   return mainWindow;
@@ -429,21 +418,15 @@ function setupIpcHandlers() {
   });
 
   ipcMain.handle('multi-ai:clear-partition', async (_event, partitionName) => {
-    if (!partitionName) return { success: false };
+    const targetPartition = partitionName || PERSISTENT_SESSION_PARTITION;
     try {
-      const targetSession = session.fromPartition(partitionName);
+      const targetSession = session.fromPartition(targetPartition);
       await targetSession.clearStorageData();
       return { success: true };
     } catch (e) {
       return { success: false, error: e?.message };
     }
   });
-
-  /**
-   * =====================================================================
-   * GOOGLE DESKTOP OAUTH 2.0 LOOPBACK IPC HANDLERS
-   * =====================================================================
-   */
 
   // 1. Initiate Google Sign-In via Loopback Flow
   ipcMain.handle('auth:google-login', async (_event, options = {}) => {
@@ -464,20 +447,17 @@ function setupIpcHandlers() {
     return new Promise((resolve, reject) => {
       activeAuthReject = reject;
 
-      // Spin up lightweight local HTTP server listening on 127.0.0.1 (port 0 = auto-assign ephemeral port)
       const server = http.createServer(async (req, res) => {
         try {
           const host = req.headers.host || `127.0.0.1:${activeLoopbackPort}`;
           const parsedUrl = new URL(req.url, `http://${host}`);
 
-          // Handle Favicon
           if (parsedUrl.pathname === '/favicon.ico') {
             res.writeHead(204);
             res.end();
             return;
           }
 
-          // Catch redirect callback at /auth/callback
           if (parsedUrl.pathname === '/auth/callback') {
             const code = parsedUrl.searchParams.get('code');
             const state = parsedUrl.searchParams.get('state');
@@ -508,21 +488,18 @@ function setupIpcHandlers() {
               return;
             }
 
-            // Clean confirmation message to external browser
             res.writeHead(200, {
               'Content-Type': 'text/html; charset=utf-8',
               'Connection': 'close',
             });
             res.end(getSuccessHtmlPage('Sign-In Complete'));
 
-            // Gracefully close local loopback server
             setTimeout(() => {
               if (activeLoopbackServer === server) {
                 stopActiveLoopback('Completed');
               }
             }, 800);
 
-            // Exchange authorization code for tokens via PKCE
             try {
               const redirectUri = `http://127.0.0.1:${activeLoopbackPort}/auth/callback`;
               const tokenParams = new URLSearchParams({
@@ -540,7 +517,6 @@ function setupIpcHandlers() {
               let tokenData = null;
               let userInfo = null;
 
-              // Perform Google Token Exchange
               try {
                 const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
                   method: 'POST',
@@ -550,15 +526,11 @@ function setupIpcHandlers() {
 
                 if (tokenRes.ok) {
                   tokenData = await tokenRes.json();
-                } else {
-                  const errJson = await tokenRes.json().catch(() => ({}));
-                  console.warn('[Google OAuth] Token exchange non-200:', errJson);
                 }
               } catch (tokenErr) {
-                console.warn('[Google OAuth] Network error during token exchange:', tokenErr);
+                console.warn('[Google OAuth] Token exchange error:', tokenErr);
               }
 
-              // Fetch User Profile if tokens acquired
               if (tokenData && tokenData.access_token) {
                 try {
                   const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -572,7 +544,6 @@ function setupIpcHandlers() {
                 }
               }
 
-              // Fallback Profile for Local Development or when using Sandbox Credentials
               if (!userInfo) {
                 userInfo = {
                   name: 'Verified Google Account',
@@ -605,7 +576,6 @@ function setupIpcHandlers() {
                 port: activeLoopbackPort,
               });
             } catch (exchangeErr) {
-              console.error('[Google OAuth] Code exchange failure:', exchangeErr);
               resolve({
                 success: false,
                 error: `Token exchange failed: ${exchangeErr?.message || 'Unknown network error'}`,
@@ -616,13 +586,11 @@ function setupIpcHandlers() {
             res.end('Not Found');
           }
         } catch (serverErr) {
-          console.error('[Loopback Server Error]:', serverErr);
           res.writeHead(500, { 'Content-Type': 'text/plain' });
           res.end('Internal Loopback Error');
         }
       });
 
-      // Bind to 127.0.0.1 and ephemeral port 0
       server.listen(0, '127.0.0.1', async () => {
         const address = server.address();
         activeLoopbackServer = server;
@@ -630,7 +598,6 @@ function setupIpcHandlers() {
 
         const redirectUri = `http://127.0.0.1:${activeLoopbackPort}/auth/callback`;
 
-        // Build Google OAuth 2.0 Consent URL
         const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
         authUrl.searchParams.set('client_id', clientId);
         authUrl.searchParams.set('redirect_uri', redirectUri);
@@ -642,11 +609,6 @@ function setupIpcHandlers() {
         authUrl.searchParams.set('access_type', 'offline');
         authUrl.searchParams.set('prompt', 'consent');
 
-        console.info(
-          `[Google OAuth] Loopback server listening on ${redirectUri}. Launching external system browser...`
-        );
-
-        // Open Google OAuth consent URL in user's default external system browser
         try {
           await shell.openExternal(authUrl.toString());
         } catch (openErr) {
@@ -659,7 +621,6 @@ function setupIpcHandlers() {
       });
 
       server.on('error', (err) => {
-        console.error('[Loopback Server Bind Error]:', err);
         stopActiveLoopback('Server bind error');
         resolve({
           success: false,
@@ -667,7 +628,6 @@ function setupIpcHandlers() {
         });
       });
 
-      // 5-minute timeout for user to complete consent
       setTimeout(() => {
         if (activeLoopbackServer === server) {
           stopActiveLoopback('Authentication timed out after 5 minutes');
@@ -680,57 +640,64 @@ function setupIpcHandlers() {
     });
   });
 
-  // 2. Cancel Active Google Loopback Listener
   ipcMain.handle('auth:google-cancel', async () => {
     stopActiveLoopback('Canceled by user');
     return { success: true, message: 'Google authentication canceled.' };
   });
 
-  // 3. Get Active Session
   ipcMain.handle('auth:get-session', async () => {
     return activeGoogleSession;
   });
 
-  // 4. Logout / Clear Session
   ipcMain.handle('auth:google-logout', async () => {
     activeGoogleSession = null;
     return { success: true };
   });
 }
 
-app.on('browser-window-created', (event, childWindow) => {
-  if (childWindow !== mainWindow) {
-    childWindow.webContents.on('did-navigate', (e, navigatedUrl) => {
-      // Detect completion of Google authentication
-      const isAuthSuccess = 
-        navigatedUrl.includes('gemini.google.com/app') || 
-        navigatedUrl.includes('myaccount.google.com') ||
-        navigatedUrl.includes('authuser') ||
-        navigatedUrl.includes('accounts.google.com/CheckCookie') ||
-        navigatedUrl.includes('developers.google.com') ||
-        navigatedUrl.includes('accounts.google.com/b/');
+// App created window listener for auth child windows navigation
+app.on('browser-window-created', (_event, createdWindow) => {
+  const handleAuthNav = (_navEvent, navUrl) => {
+    if (!createdWindow || createdWindow.isDestroyed()) return;
 
-      if (isAuthSuccess) {
-        setTimeout(() => {
-          if (!childWindow.isDestroyed()) {
-            childWindow.close();
-          }
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('auth:redirect-webview', { 
-              engine: 'gemini', 
-              url: 'https://gemini.google.com/app' 
-            });
-          }
-        }, 600);
-      }
-    });
-  }
-});
+    let engine = null;
+    let targetUrl = navUrl;
 
-app.on('web-contents-created', (_event, contents) => {
-  try {
-    contents.setUserAgent(CHROME_USER_AGENT);
-  } catch (_e) {}
+    if (navUrl.includes('gemini.google.com/app') || navUrl.includes('gemini.google.com')) {
+      engine = 'gemini';
+      targetUrl = 'https://gemini.google.com/app';
+    } else if (navUrl.includes('chatgpt.com')) {
+      engine = 'chatgpt';
+      targetUrl = 'https://chatgpt.com';
+    } else if (navUrl.includes('claude.ai')) {
+      engine = 'claude';
+      targetUrl = 'https://claude.ai';
+    } else if (navUrl.includes('perplexity.ai')) {
+      engine = 'perplexity';
+      targetUrl = 'https://www.perplexity.ai';
+    } else if (navUrl.includes('copilot.microsoft.com')) {
+      engine = 'copilot';
+      targetUrl = 'https://copilot.microsoft.com';
+    }
+
+    if (engine) {
+      setTimeout(() => {
+        try {
+          if (!createdWindow.isDestroyed()) createdWindow.close();
+        } catch (_e) {}
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('auth:redirect-webview', {
+            engine,
+            url: targetUrl,
+          });
+        }
+      }, 800);
+    }
+  };
+
+  createdWindow.webContents.on('did-navigate', handleAuthNav);
+  createdWindow.webContents.on('did-redirect-navigation', handleAuthNav);
 });
 
 app.whenReady().then(() => {
