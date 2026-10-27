@@ -260,19 +260,7 @@ function configurePartitionHeaders(targetSession) {
     callback({ cancel: false, responseHeaders });
   });
 
-  // Intercept any attempted in-webview navigation to accounts.google.com to prevent Disallowed User-Agent / WebAuthn blocks
-  targetSession.webRequest.onBeforeRequest(
-    { urls: ['https://accounts.google.com/*', 'https://accounts.youtube.com/*'] },
-    (details, callback) => {
-      if (details.resourceType === 'mainFrame' || details.resourceType === 'subFrame') {
-        console.info('[Security Guard] Blocked in-webview navigation to accounts.google.com. Launching external browser instead.');
-        shell.openExternal(details.url);
-        callback({ cancel: true });
-        return;
-      }
-      callback({ cancel: false });
-    }
-  );
+  // Ensure partition sessions allow standard embedded authentication without external redirection
 }
 
 function createWindow() {
@@ -308,18 +296,18 @@ function createWindow() {
     }
   });
 
-  // Intercept window open calls: Open external authentication URLs in system browser, allow regular popups
+  // Intercept window open calls: Allow authentication popups inside application windows
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.includes('accounts.google.com') || url.includes('accounts.youtube.com')) {
-      shell.openExternal(url);
-      return { action: 'deny' };
-    }
     return {
       action: 'allow',
       overrideBrowserWindowOptions: {
-        width: 600,
-        height: 750,
+        width: 700,
+        height: 800,
         autoHideMenuBar: true,
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
       },
     };
   });
@@ -675,6 +663,12 @@ app.whenReady().then(() => {
 
   app.on('session-created', (newSession) => {
     configurePartitionHeaders(newSession);
+  });
+
+  app.on('web-contents-created', (_event, contents) => {
+    try {
+      contents.setUserAgent(CHROME_USER_AGENT);
+    } catch (_e) {}
   });
 
   app.on('activate', () => {

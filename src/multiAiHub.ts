@@ -597,17 +597,12 @@ class MultiAiHubManager {
   }
 
   /**
-   * Returns the list of AI Services that are currently active and visible
-   * in accordance with the user's view selection (single, dual, 3-split, 4-split, 5-split, All).
+   * Returns the list of browser panes that are currently visible on screen
+   * based on layout selection (single, dual, triple, quad, penta, all) or maximized state.
    */
-  public getActiveServices(): AiServiceConfig[] {
-    // If any pane is maximized, only that single pane is active
+  public getVisiblePanes(): BrowserPane[] {
     if (this.state.panes.some((p) => p.isMaximized)) {
-      const maxPane = this.state.panes.find((p) => p.isMaximized);
-      if (maxPane) {
-        const svc = AI_SERVICES.find((s) => s.id === maxPane.serviceId);
-        return svc ? [svc] : [];
-      }
+      return this.state.panes.filter((p) => p.isMaximized);
     }
 
     const layout = this.state.layout;
@@ -619,14 +614,20 @@ class MultiAiHubManager {
     else if (layout === 'penta') targetCount = 5;
     else if (layout === 'all') targetCount = 6;
 
-    let visiblePanes: BrowserPane[] = [];
     if (layout === 'single') {
       const active = this.state.panes.find((p) => p.id === this.state.activePaneId);
-      visiblePanes = active ? [active] : this.state.panes.slice(0, 1);
-    } else {
-      visiblePanes = this.state.panes.slice(0, targetCount);
+      return active ? [active] : this.state.panes.slice(0, 1);
     }
 
+    return this.state.panes.slice(0, Math.min(targetCount, this.state.panes.length));
+  }
+
+  /**
+   * Returns the list of AI Services that are currently active and visible
+   * in accordance with the user's view selection.
+   */
+  public getActiveServices(): AiServiceConfig[] {
+    const visiblePanes = this.getVisiblePanes();
     const activeServices: AiServiceConfig[] = [];
     visiblePanes.forEach((p) => {
       const svc = AI_SERVICES.find((s) => s.id === p.serviceId);
@@ -634,7 +635,6 @@ class MultiAiHubManager {
         activeServices.push(svc);
       }
     });
-
     return activeServices;
   }
 
@@ -649,38 +649,34 @@ class MultiAiHubManager {
     this.state.broadcastPrompt = promptText;
     this.saveState();
 
-    const activeServices = this.getActiveServices();
-    if (!activeServices || activeServices.length === 0) {
+    const visiblePanes = this.getVisiblePanes();
+    if (!visiblePanes || visiblePanes.length === 0) {
       this.showToast('No active AI browser panes currently visible in view.');
       return;
     }
 
-    const activeServiceIds = new Set(activeServices.map((s) => s.id));
-    const isDesktop = typeof (window as any).sentinelDesktop !== 'undefined' && !!(window as any).sentinelDesktop.isDesktop;
-
     // 1. Copy to clipboard
     navigator.clipboard.writeText(promptText).catch(() => {});
 
-    // 2. Pulse effect on active visible panes
-    this.state.panes.forEach((p) => {
-      if (activeServiceIds.has(p.serviceId)) {
-        const paneEl = document.getElementById(`pane_container_${p.id}`);
-        if (paneEl) {
-          paneEl.classList.add('ring-4', 'ring-emerald-400/80', 'transition-all');
-          setTimeout(() => {
-            paneEl.classList.remove('ring-4', 'ring-emerald-400/80');
-          }, 1200);
-        }
+    // 2. Pulse effect on ALL active visible panes
+    visiblePanes.forEach((pane) => {
+      const paneEl = document.getElementById(`pane_container_${pane.id}`);
+      if (paneEl) {
+        paneEl.classList.add('ring-4', 'ring-emerald-400/80', 'transition-all');
+        setTimeout(() => {
+          paneEl.classList.remove('ring-4', 'ring-emerald-400/80');
+        }, 1200);
       }
     });
 
-    // 3. Dispatch to ACTIVE VISIBLE AIs in accordance to view selection
+    // 3. Dispatch prompt to ALL active visible AI windows simultaneously
     let sentCount = 0;
-    activeServices.forEach((svc) => {
-      const pane = this.state.panes.find((p) => p.serviceId === svc.id);
-      if (!pane) return;
+    const activeServiceNames: string[] = [];
 
+    visiblePanes.forEach((pane) => {
+      const svc = AI_SERVICES.find((s) => s.id === pane.serviceId) || AI_SERVICES[0];
       sentCount++;
+      activeServiceNames.push(svc.shortName);
 
       // Update state externalSessions
       if ((window as any).state && (window as any).state.externalSessions) {
@@ -691,13 +687,27 @@ class MultiAiHubManager {
         (window as any).state.externalSessions[svc.id].isLoading = true;
       }
 
-      if (isDesktop) {
-        const webview = document.getElementById(`browser_frame_${pane.id}`) as any;
-        if (webview && typeof webview.executeJavaScript === 'function') {
-          const script = this.buildInjectionScript(svc.id, promptText, this.state.autoSubmit);
-          webview.executeJavaScript(script).catch((err: any) => {
-            console.warn(`[Multi-AI] Injection error for ${svc.id}:`, err);
+      const frameEl = document.getElementById(`browser_frame_${pane.id}`) as any;
+      if (frameEl) {
+        const script = this.buildInjectionScript(svc.id, promptText, this.state.autoSubmit);
+        
+        // Handle Electron <webview> execution
+        if (typeof frameEl.executeJavaScript === 'function') {
+          frameEl.executeJavaScript(script).catch((err: any) => {
+            console.warn(`[Multi-AI Broadcast] Webview injection failed for ${svc.name} (${pane.id}):`, err);
           });
+        } 
+        
+        // Handle Web Mode <iframe> execution
+        if (frameEl.contentWindow) {
+          try {
+            frameEl.contentWindow.postMessage({
+              type: 'SENTINEL_INJECT_PROMPT',
+              serviceId: svc.id,
+              prompt: promptText,
+              autoSubmit: this.state.autoSubmit,
+            }, '*');
+          } catch (_e) {}
         }
       }
     });
@@ -713,10 +723,10 @@ class MultiAiHubManager {
 
     const label = modeLabels[this.state.layout] || `${sentCount} Active AIs`;
 
-    if (this.state.autoSubmit && isDesktop) {
-      this.showToast(`🚀 Auto-Sending broadcast to ${sentCount} Active AIs [${label}]: ${activeServices.map(s => s.shortName).join(', ')}`);
+    if (this.state.autoSubmit) {
+      this.showToast(`🚀 Auto-Sending broadcast prompt to ALL ${sentCount} Active AI Windows [${label}]: ${activeServiceNames.join(', ')}`);
     } else {
-      this.showToast(`⚡ Broadcast Prompt filled into ${sentCount} Active AIs [${label}]: ${activeServices.map(s => s.shortName).join(', ')}`);
+      this.showToast(`⚡ Broadcast Prompt filled into ALL ${sentCount} Active AI Windows [${label}]: ${activeServiceNames.join(', ')}`);
     }
   }
 
@@ -1226,24 +1236,7 @@ class MultiAiHubManager {
     }
 
     const isDesktop = typeof (window as any).sentinelDesktop !== 'undefined' && !!(window as any).sentinelDesktop.isDesktop;
-
-    let targetCount = 3;
-    if (layout === 'single') targetCount = 1;
-    else if (layout === 'dual') targetCount = 2;
-    else if (layout === 'triple') targetCount = 3;
-    else if (layout === 'quad') targetCount = 4;
-    else if (layout === 'penta') targetCount = 5;
-    else if (layout === 'all') targetCount = 6;
-
-    let visiblePanes: BrowserPane[] = [];
-    if (this.state.panes.some((p) => p.isMaximized)) {
-      visiblePanes = this.state.panes.filter((p) => p.isMaximized);
-    } else if (layout === 'single') {
-      const active = this.state.panes.find((p) => p.id === this.state.activePaneId);
-      visiblePanes = active ? [active] : this.state.panes.slice(0, 1);
-    } else {
-      visiblePanes = this.state.panes.slice(0, targetCount);
-    }
+    const visiblePanes = this.getVisiblePanes();
 
     gridEl.innerHTML = visiblePanes
       .map((pane) => {
@@ -1274,10 +1267,10 @@ class MultiAiHubManager {
                     <span class="font-bold text-emerald-950 dark:text-emerald-100 truncate">${googleUser.name || 'Google Account'}</span>
                     <span class="text-[10px] text-emerald-700 dark:text-emerald-300 font-mono truncate">(${googleUser.email || 'active'})</span>
                   </div>
-                  <span class="hidden sm:inline-block text-[9px] px-2 py-0.2 rounded-full bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 font-mono font-bold shrink-0">✓ Google Account Ready</span>
+                  <span class="hidden sm:inline-block text-[9px] px-2 py-0.2 rounded-full bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 font-mono font-bold shrink-0">✓ Google Account Connected</span>
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0">
-                  <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="px-2.5 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition cursor-pointer shadow-2xs flex items-center gap-1">
+                  <button onclick="window.multiAiHub.navigatePane('${pane.id}', '${service.defaultUrl}')" class="px-2.5 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition cursor-pointer shadow-2xs flex items-center gap-1">
                     <span>🔑</span> Log In / Continue ${service.shortName}
                   </button>
                   <button onclick="window.multiAiHub.reloadPane('${pane.id}')" class="px-2 py-0.5 rounded-lg bg-gray-200 dark:bg-intel-800 text-gray-800 dark:text-slate-200 font-bold text-[10px] transition cursor-pointer">
@@ -1291,11 +1284,16 @@ class MultiAiHubManager {
               <div class="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/80 border-b border-amber-300 dark:border-amber-700 text-xs flex items-center justify-between gap-2 shrink-0 select-none">
                 <div class="flex items-center gap-2 truncate">
                   <span class="text-amber-600 dark:text-amber-400 font-bold">${service.icon} ${service.name}:</span>
-                  <span class="text-amber-900 dark:text-amber-200 text-[11px] truncate">Use your Google Account for ${service.shortName} SSO</span>
+                  <span class="text-amber-900 dark:text-amber-200 text-[11px] truncate">Sign in directly inside this pane with your account</span>
                 </div>
-                <button onclick="window.googleAuth.signIn()" class="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1">
-                  <span>🔑</span> Sign in with Google
-                </button>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <button onclick="window.multiAiHub.navigatePane('${pane.id}', '${service.defaultUrl}')" class="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1">
+                    <span>🔑</span> Log In / Open ${service.shortName}
+                  </button>
+                  <button onclick="window.googleAuth.signIn()" class="px-2.5 py-1 rounded-lg bg-amber-200 dark:bg-amber-900 text-amber-950 dark:text-amber-100 text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1">
+                    <span>🌐</span> Google SSO
+                  </button>
+                </div>
               </div>
             `;
           }
@@ -1306,7 +1304,7 @@ class MultiAiHubManager {
                 <span class="text-blue-700 dark:text-blue-300 font-bold">🔵 Microsoft Copilot:</span>
                 <span class="text-blue-900 dark:text-blue-200 text-[11px] truncate">Microsoft 365 Work, School, or Personal Account SSO</span>
               </div>
-              <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1">
+              <button onclick="window.multiAiHub.navigatePane('${pane.id}', '${service.defaultUrl}')" class="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold transition shadow-xs cursor-pointer shrink-0 flex items-center gap-1">
                 <span>🔑</span> Log In with Microsoft
               </button>
             </div>
