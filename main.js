@@ -13,10 +13,11 @@ const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 
-// Hardware Acceleration, WebGPU, and sRGB Profile Alignment
+// Hardware Acceleration, WebGPU, WebAuthn Passkeys, and sRGB Profile Alignment
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('enable-unsafe-webgpu');
-app.commandLine.appendSwitch('enable-features', 'Vulkan,WebGPU');
+app.commandLine.appendSwitch('enable-features', 'Vulkan,WebGPU,WebAuthentication,WebAuthenticationNewPasskeyUI');
+app.commandLine.appendSwitch('disable-features', 'UserAgentClientHint');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
 const PERSISTENT_SESSION_PARTITION = 'persist:sentinel_ai_workspace';
@@ -239,6 +240,17 @@ function configurePartitionHeaders(targetSession) {
   targetSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
     const requestHeaders = { ...details.requestHeaders };
     requestHeaders['User-Agent'] = CHROME_USER_AGENT;
+    delete requestHeaders['Sec-Ch-Ua'];
+    delete requestHeaders['Sec-Ch-Ua-Mobile'];
+    delete requestHeaders['Sec-Ch-Ua-Platform'];
+    delete requestHeaders['sec-ch-ua'];
+    delete requestHeaders['sec-ch-ua-mobile'];
+    delete requestHeaders['sec-ch-ua-platform'];
+
+    requestHeaders['Sec-Ch-Ua'] = '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"';
+    requestHeaders['Sec-Ch-Ua-Mobile'] = '?0';
+    requestHeaders['Sec-Ch-Ua-Platform'] = '"Windows"';
+
     callback({ cancel: false, requestHeaders });
   });
 
@@ -713,6 +725,12 @@ app.on('browser-window-created', (event, childWindow) => {
       }
     });
   }
+});
+
+app.on('web-contents-created', (_event, contents) => {
+  try {
+    contents.setUserAgent(CHROME_USER_AGENT);
+  } catch (_e) {}
 });
 
 app.whenReady().then(() => {

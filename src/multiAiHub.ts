@@ -1371,7 +1371,8 @@ class MultiAiHubManager {
               <div class="flex items-center gap-1 shrink-0">
                 ${
                   pane.serviceId === 'gemini'
-                    ? `<button type="button" onclick="const wv = document.getElementById('geminiWebview'); if (wv) wv.src = 'https://gemini.google.com/app';" class="px-2 py-1 text-[11px] rounded bg-white/10 text-slate-300 hover:text-white hover:bg-white/20 transition cursor-pointer" title="Load Logged-in App">🔄 Open Logged-In Gemini</button>`
+                    ? `<button type="button" onclick="if(window.sentinelDesktop && window.sentinelDesktop.openExternal) { window.sentinelDesktop.openExternal('https://accounts.google.com/InteractiveLogin?continue=https://gemini.google.com/app'); } else { window.open('https://accounts.google.com/InteractiveLogin?continue=https://gemini.google.com/app', '_blank'); }" class="px-2 py-1 text-[11px] rounded bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 border border-amber-500/40 font-bold transition cursor-pointer" title="Sign in with Google Passkey in System Browser">🔑 Passkey Login</button>
+                       <button type="button" onclick="const wv = document.getElementById('geminiWebview'); if (wv) wv.src = 'https://gemini.google.com/app';" class="px-2 py-1 text-[11px] rounded bg-white/10 text-slate-300 hover:text-white hover:bg-white/20 transition cursor-pointer" title="Load Logged-in App">🔄 Open Logged-In Gemini</button>`
                     : ''
                 }
                 <!-- Zoom Controls -->
