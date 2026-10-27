@@ -12256,6 +12256,11 @@ export function renderMultiAiWorkspacePanes() {
               </div>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
+              ${
+                engKey === 'gemini'
+                  ? `<button type="button" onclick="const wv = document.getElementById('geminiWebview'); if (wv) wv.src = 'https://gemini.google.com/app';" class="px-2 py-1 text-[11px] rounded bg-white/10 text-slate-300 hover:text-white hover:bg-white/20 transition cursor-pointer" title="Load Logged-in App">🔄 Open Logged-In Gemini</button>`
+                  : ''
+              }
               <button onclick="window.importEngineResponseToWorkDesk('${engKey}')" class="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer" title="Import response into Work Desk">
                 <span>📥</span><span class="hidden sm:inline">To Desk</span>
               </button>
@@ -12265,21 +12270,15 @@ export function renderMultiAiWorkspacePanes() {
             </div>
           </div>
           <div class="flex-1 relative w-full h-full bg-white">
-            ${
-              engKey === 'gemini' && (window as any).googleAuth
-                ? (window as any).googleAuth.generateGeminiPaneHtml()
-                : `
-                  <webview
-                    id="${engKey}Webview"
-                    src="${cfg.url}"
-                    partition="persist:sentinel_ai_workspace"
-                    allowpopups="true"
-                    webpreferences="contextIsolation=yes, allowRunningInsecureContent=no"
-                    class="w-full h-full border-0"
-                    style="width: 100%; height: 100%; display: flex;"
-                  ></webview>
-                `
-            }
+            <webview
+              id="${engKey === 'gemini' ? 'geminiWebview' : engKey + 'Webview'}"
+              src="${engKey === 'gemini' ? 'https://gemini.google.com/app' : cfg.url}"
+              partition="persist:sentinel_ai_workspace"
+              allowpopups="true"
+              webpreferences="contextIsolation=yes"
+              class="w-full h-full border-0"
+              style="width: 100%; height: 100%; display: flex;"
+            ></webview>
           </div>
         </div>
       `;

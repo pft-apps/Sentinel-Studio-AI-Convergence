@@ -23,5 +23,9 @@ contextBridge.exposeInMainWorld('sentinelDesktop', {
   getGoogleSession: () => ipcRenderer.invoke('auth:get-session'),
   googleLogout: () => ipcRenderer.invoke('auth:google-logout'),
 
+  onAuthRedirect: (callback) => {
+    ipcRenderer.on('auth:redirect-webview', (_event, data) => callback(data));
+  },
+
   isDesktop: true,
 });

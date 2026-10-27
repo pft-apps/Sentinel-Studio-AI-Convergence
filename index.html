@@ -202,7 +202,7 @@
         }
       };
 
-      // Desktop Runtime Indicator Hook
+      // Desktop Runtime Indicator Hook & Desktop Auth Redirect Listener
       document.addEventListener('DOMContentLoaded', function() {
         if (isDesktop) {
           const badge = document.getElementById('desktopStatusIndicator');
@@ -210,6 +210,17 @@
             badge.classList.remove('hidden');
             badge.classList.add('flex');
           }
+        }
+
+        if (window.sentinelDesktop && typeof window.sentinelDesktop.onAuthRedirect === 'function') {
+          window.sentinelDesktop.onAuthRedirect((data) => {
+            if (data.engine === 'gemini') {
+              const geminiView = document.getElementById('geminiWebview');
+              if (geminiView) {
+                geminiView.src = data.url || 'https://gemini.google.com/app';
+              }
+            }
+          });
         }
       });
     })();

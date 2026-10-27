@@ -260,11 +260,19 @@ function configurePartitionHeaders(targetSession) {
     callback({ cancel: false, responseHeaders });
   });
 
-  // Ensure partition sessions allow standard embedded authentication without external redirection
+  // Intercept any attempted in-webview navigation to accounts.google.com if needed
+  targetSession.webRequest.onBeforeRequest(
+    { urls: ['https://accounts.youtube.com/*'] },
+    (details, callback) => {
+      callback({ cancel: false });
+    }
+  );
 }
 
+let mainWindow = null;
+
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1200,
@@ -296,18 +304,39 @@ function createWindow() {
     }
   });
 
-  // Intercept window open calls: Allow authentication popups inside application windows
+  // Intercept window open calls: Block external workstation popups and redirect webview, allow OAuth popups
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.includes('gemini.google.com') || url.includes('workstation') || url.startsWith('intent://')) {
+      mainWindow.webContents.send('auth:redirect-webview', { engine: 'gemini', url: 'https://gemini.google.com/app' });
+      return { action: 'deny' };
+    }
+    if (
+      url.includes('accounts.google.com') ||
+      url.includes('login.microsoftonline.com') ||
+      url.includes('auth') ||
+      url.includes('login')
+    ) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 550,
+          height: 750,
+          title: 'Workspace Authentication',
+          autoHideMenuBar: true,
+          webPreferences: {
+            partition: 'persist:sentinel_ai_workspace',
+            contextIsolation: true,
+            nodeIntegration: false,
+          },
+        },
+      };
+    }
     return {
       action: 'allow',
       overrideBrowserWindowOptions: {
-        width: 700,
-        height: 800,
+        width: 600,
+        height: 750,
         autoHideMenuBar: true,
-        webPreferences: {
-          contextIsolation: true,
-          nodeIntegration: false,
-        },
       },
     };
   });
@@ -657,18 +686,41 @@ function setupIpcHandlers() {
   });
 }
 
+app.on('browser-window-created', (event, childWindow) => {
+  if (childWindow !== mainWindow) {
+    childWindow.webContents.on('did-navigate', (e, navigatedUrl) => {
+      // Detect completion of Google authentication
+      const isAuthSuccess = 
+        navigatedUrl.includes('gemini.google.com/app') || 
+        navigatedUrl.includes('myaccount.google.com') ||
+        navigatedUrl.includes('authuser') ||
+        navigatedUrl.includes('accounts.google.com/CheckCookie') ||
+        navigatedUrl.includes('developers.google.com') ||
+        navigatedUrl.includes('accounts.google.com/b/');
+
+      if (isAuthSuccess) {
+        setTimeout(() => {
+          if (!childWindow.isDestroyed()) {
+            childWindow.close();
+          }
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('auth:redirect-webview', { 
+              engine: 'gemini', 
+              url: 'https://gemini.google.com/app' 
+            });
+          }
+        }, 600);
+      }
+    });
+  }
+});
+
 app.whenReady().then(() => {
   setupIpcHandlers();
   createWindow();
 
   app.on('session-created', (newSession) => {
     configurePartitionHeaders(newSession);
-  });
-
-  app.on('web-contents-created', (_event, contents) => {
-    try {
-      contents.setUserAgent(CHROME_USER_AGENT);
-    } catch (_e) {}
   });
 
   app.on('activate', () => {
