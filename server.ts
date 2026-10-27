@@ -136,6 +136,41 @@ app.get('/api/multi-ai/services', (_req: Request, res: Response) => {
   });
 });
 
+// Google OAuth Session In-Memory Cache (for Web Preview Mode)
+let serverGoogleSession: any = null;
+
+app.get('/api/auth/google/session', (_req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    session: serverGoogleSession,
+  });
+});
+
+app.post('/api/auth/google/session', (req: Request, res: Response) => {
+  const { user, tokens, authMethod } = req.body || {};
+  serverGoogleSession = {
+    user: user || {
+      name: 'Patrick Jay F. Tanap, CPA, CICA',
+      email: 'pjftanap@gmail.com',
+      picture: 'https://lh3.googleusercontent.com/a/default-user',
+      verified_email: true,
+    },
+    tokens: tokens || {
+      access_token: 'mock_token_web_' + Date.now(),
+      expires_in: 3600,
+      scope: 'openid email profile',
+    },
+    authMethod: authMethod || 'Web Preview Desktop Simulation',
+    authenticatedAt: Date.now(),
+  };
+  res.json({ status: 'ok', session: serverGoogleSession });
+});
+
+app.post('/api/auth/google/logout', (_req: Request, res: Response) => {
+  serverGoogleSession = null;
+  res.json({ status: 'ok', message: 'Logged out successfully' });
+});
+
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');

@@ -7,6 +7,8 @@
  * =====================================================================
  */
 
+import { googleAuth } from './googleAuth.ts';
+
 export interface AiServiceConfig {
   id: string;
   name: string;
@@ -32,7 +34,7 @@ export interface BrowserPane {
   companionOpen?: boolean;
 }
 
-export type MultiAiLayout = 'triple' | 'dual' | 'quad' | 'single' | 'horizontal';
+export type MultiAiLayout = 'single' | 'dual' | 'triple' | 'quad' | 'penta' | 'all';
 
 export interface MultiAiStore {
   isOpen: boolean;
@@ -145,11 +147,34 @@ class MultiAiHubManager {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && Array.isArray(parsed.panes) && parsed.panes.length > 0) {
+          const loadedPanes = [...parsed.panes];
+          const existingServiceIds = new Set(loadedPanes.map((p: any) => p.serviceId));
+          const canonical = ['copilot', 'gemini', 'chatgpt', 'claude', 'perplexity', 'custom'];
+          canonical.forEach((sid) => {
+            if (!existingServiceIds.has(sid)) {
+              const svc = AI_SERVICES.find((s) => s.id === sid);
+              if (svc) {
+                loadedPanes.push({
+                  id: `pane_${sid}`,
+                  serviceId: svc.id,
+                  currentUrl: svc.defaultUrl,
+                  zoomLevel: 1.0,
+                  title: svc.name,
+                  isLoading: false,
+                  isMaximized: false,
+                });
+              }
+            }
+          });
+
+          const validLayouts = ['single', 'dual', 'triple', 'quad', 'penta', 'all'];
+          const finalLayout = validLayouts.includes(parsed.layout) ? parsed.layout : 'triple';
+
           return {
             isOpen: !!parsed.isOpen,
-            layout: parsed.layout || 'triple',
-            panes: parsed.panes,
-            activePaneId: parsed.activePaneId || parsed.panes[0]?.id || null,
+            layout: finalLayout as MultiAiLayout,
+            panes: loadedPanes,
+            activePaneId: parsed.activePaneId || loadedPanes[0]?.id || null,
             broadcastPrompt: parsed.broadcastPrompt || '',
             syncOnSend: parsed.syncOnSend !== false,
             autoSubmit: parsed.autoSubmit !== false,
@@ -161,7 +186,7 @@ class MultiAiHubManager {
       console.warn('[Multi-AI Hub] Error restoring state:', e);
     }
 
-    // Default: 3 panes (Microsoft Copilot, Google Gemini, OpenAI ChatGPT)
+    // Default: All 6 AIs configured and ready (Copilot, Gemini, ChatGPT, Claude, Perplexity, Custom URL)
     const defaultPanes: BrowserPane[] = [
       {
         id: 'pane_copilot',
@@ -187,6 +212,33 @@ class MultiAiHubManager {
         currentUrl: 'https://chatgpt.com/',
         zoomLevel: 1.0,
         title: 'OpenAI ChatGPT',
+        isLoading: false,
+        isMaximized: false,
+      },
+      {
+        id: 'pane_claude',
+        serviceId: 'claude',
+        currentUrl: 'https://claude.ai/',
+        zoomLevel: 1.0,
+        title: 'Anthropic Claude',
+        isLoading: false,
+        isMaximized: false,
+      },
+      {
+        id: 'pane_perplexity',
+        serviceId: 'perplexity',
+        currentUrl: 'https://www.perplexity.ai/',
+        zoomLevel: 1.0,
+        title: 'Perplexity AI',
+        isLoading: false,
+        isMaximized: false,
+      },
+      {
+        id: 'pane_custom',
+        serviceId: 'custom',
+        currentUrl: 'https://chat.deepseek.com/',
+        zoomLevel: 1.0,
+        title: 'Custom AI Browser',
         isLoading: false,
         isMaximized: false,
       },
@@ -305,19 +357,74 @@ class MultiAiHubManager {
   public setLayout(layout: MultiAiLayout): void {
     this.state.layout = layout;
 
-    // Adjust pane count if necessary for layout
-    if (layout === 'triple' && this.state.panes.length < 3) {
-      this.addPane('chatgpt');
-    } else if (layout === 'quad' && this.state.panes.length < 4) {
-      while (this.state.panes.length < 4) {
-        const nextService = AI_SERVICES[this.state.panes.length % AI_SERVICES.length];
-        this.addPane(nextService.id);
-      }
-    }
+    // Reset maximized state when switching layouts
+    this.state.panes.forEach((p) => (p.isMaximized = false));
+
+    const targetCount = layout === 'single' ? 1
+      : layout === 'dual' ? 2
+      : layout === 'triple' ? 3
+      : layout === 'quad' ? 4
+      : layout === 'penta' ? 5
+      : 6;
+
+    this.ensurePanesForCount(targetCount);
 
     this.saveState();
     this.renderPanesGrid();
     this.updateLayoutButtons();
+
+    const layoutLabels: Record<MultiAiLayout, string> = {
+      single: 'Single Focus View',
+      dual: 'Dual Side-by-Side View (2 Columns, 1 Row)',
+      triple: '3-Split View (3 Columns, 1 Row)',
+      quad: '4-Split View (2x2 Grid)',
+      penta: '5-Split View (5 AIs in 3-Column Grid)',
+      all: 'All View (6 AIs in 3-Column Grid: 5 AIs + Custom URL Browser)',
+    };
+    this.showToast(`Switched to ${layoutLabels[layout]}`);
+  }
+
+  public ensurePanesForCount(count: number): void {
+    const canonical = ['copilot', 'gemini', 'chatgpt', 'claude', 'perplexity', 'custom'];
+    const existingServiceIds = new Set(this.state.panes.map((p) => p.serviceId));
+
+    for (let i = 0; i < count; i++) {
+      const sid = canonical[i];
+      if (!existingServiceIds.has(sid)) {
+        const svc = AI_SERVICES.find((s) => s.id === sid);
+        if (svc) {
+          this.state.panes.push({
+            id: `pane_${svc.id}`,
+            serviceId: svc.id,
+            currentUrl: svc.defaultUrl,
+            zoomLevel: 1.0,
+            title: svc.name,
+            isLoading: false,
+            isMaximized: false,
+          });
+          existingServiceIds.add(svc.id);
+        }
+      }
+    }
+  }
+
+  public switchSingleFocus(serviceId: string): void {
+    const found = this.state.panes.find((p) => p.serviceId === serviceId);
+    if (found) {
+      this.state.activePaneId = found.id;
+    } else {
+      const svc = AI_SERVICES.find((s) => s.id === serviceId);
+      if (svc && this.state.panes.length > 0) {
+        this.state.panes[0].serviceId = svc.id;
+        this.state.panes[0].currentUrl = svc.defaultUrl;
+        this.state.panes[0].title = svc.name;
+        this.state.activePaneId = this.state.panes[0].id;
+      }
+    }
+    this.saveState();
+    this.renderPanesGrid();
+    const svc = AI_SERVICES.find((s) => s.id === serviceId);
+    if (svc) this.showToast(`Switched focus to ${svc.name}`);
   }
 
   public addPane(serviceId: string = 'copilot'): void {
@@ -489,6 +596,48 @@ class MultiAiHubManager {
     }
   }
 
+  /**
+   * Returns the list of AI Services that are currently active and visible
+   * in accordance with the user's view selection (single, dual, 3-split, 4-split, 5-split, All).
+   */
+  public getActiveServices(): AiServiceConfig[] {
+    // If any pane is maximized, only that single pane is active
+    if (this.state.panes.some((p) => p.isMaximized)) {
+      const maxPane = this.state.panes.find((p) => p.isMaximized);
+      if (maxPane) {
+        const svc = AI_SERVICES.find((s) => s.id === maxPane.serviceId);
+        return svc ? [svc] : [];
+      }
+    }
+
+    const layout = this.state.layout;
+    let targetCount = 3;
+    if (layout === 'single') targetCount = 1;
+    else if (layout === 'dual') targetCount = 2;
+    else if (layout === 'triple') targetCount = 3;
+    else if (layout === 'quad') targetCount = 4;
+    else if (layout === 'penta') targetCount = 5;
+    else if (layout === 'all') targetCount = 6;
+
+    let visiblePanes: BrowserPane[] = [];
+    if (layout === 'single') {
+      const active = this.state.panes.find((p) => p.id === this.state.activePaneId);
+      visiblePanes = active ? [active] : this.state.panes.slice(0, 1);
+    } else {
+      visiblePanes = this.state.panes.slice(0, targetCount);
+    }
+
+    const activeServices: AiServiceConfig[] = [];
+    visiblePanes.forEach((p) => {
+      const svc = AI_SERVICES.find((s) => s.id === p.serviceId);
+      if (svc && !activeServices.some((s) => s.id === svc.id)) {
+        activeServices.push(svc);
+      }
+    });
+
+    return activeServices;
+  }
+
   public broadcastPrompt(): void {
     const input = document.getElementById('multiAiBroadcastInput') as HTMLTextAreaElement | null;
     const promptText = input ? input.value.trim() : this.state.broadcastPrompt.trim();
@@ -500,44 +649,121 @@ class MultiAiHubManager {
     this.state.broadcastPrompt = promptText;
     this.saveState();
 
+    const activeServices = this.getActiveServices();
+    if (!activeServices || activeServices.length === 0) {
+      this.showToast('No active AI browser panes currently visible in view.');
+      return;
+    }
+
+    const activeServiceIds = new Set(activeServices.map((s) => s.id));
     const isDesktop = typeof (window as any).sentinelDesktop !== 'undefined' && !!(window as any).sentinelDesktop.isDesktop;
 
-    // 1. Copy to clipboard for easy manual fallback or browser mode
+    // 1. Copy to clipboard
     navigator.clipboard.writeText(promptText).catch(() => {});
 
-    // 2. Pulse effect on all panes
+    // 2. Pulse effect on active visible panes
     this.state.panes.forEach((p) => {
-      const paneEl = document.getElementById(`pane_container_${p.id}`);
-      if (paneEl) {
-        paneEl.classList.add('ring-4', 'ring-emerald-400/80', 'transition-all');
-        setTimeout(() => {
-          paneEl.classList.remove('ring-4', 'ring-emerald-400/80');
-        }, 1200);
+      if (activeServiceIds.has(p.serviceId)) {
+        const paneEl = document.getElementById(`pane_container_${p.id}`);
+        if (paneEl) {
+          paneEl.classList.add('ring-4', 'ring-emerald-400/80', 'transition-all');
+          setTimeout(() => {
+            paneEl.classList.remove('ring-4', 'ring-emerald-400/80');
+          }, 1200);
+        }
       }
     });
 
-    // 3. Desktop Automation: Inject text into ChatGPT, Gemini, Copilot, Claude, Perplexity and auto-submit
-    if (isDesktop) {
-      let injectedCount = 0;
-      this.state.panes.forEach((p) => {
-        const webview = document.getElementById(`browser_frame_${p.id}`) as any;
+    // 3. Dispatch to ACTIVE VISIBLE AIs in accordance to view selection
+    let sentCount = 0;
+    activeServices.forEach((svc) => {
+      const pane = this.state.panes.find((p) => p.serviceId === svc.id);
+      if (!pane) return;
+
+      sentCount++;
+
+      // Update state externalSessions
+      if ((window as any).state && (window as any).state.externalSessions) {
+        if (!(window as any).state.externalSessions[svc.id]) {
+          (window as any).state.externalSessions[svc.id] = { lastPrompt: '', lastResponse: '', isLoading: false, history: [] };
+        }
+        (window as any).state.externalSessions[svc.id].lastPrompt = promptText;
+        (window as any).state.externalSessions[svc.id].isLoading = true;
+      }
+
+      if (isDesktop) {
+        const webview = document.getElementById(`browser_frame_${pane.id}`) as any;
         if (webview && typeof webview.executeJavaScript === 'function') {
-          injectedCount++;
-          const script = this.buildInjectionScript(p.serviceId, promptText, this.state.autoSubmit);
+          const script = this.buildInjectionScript(svc.id, promptText, this.state.autoSubmit);
           webview.executeJavaScript(script).catch((err: any) => {
-            console.warn(`[Multi-AI] Script injection error for ${p.serviceId}:`, err);
+            console.warn(`[Multi-AI] Injection error for ${svc.id}:`, err);
           });
         }
-      });
-
-      if (this.state.autoSubmit) {
-        this.showToast(`🚀 Auto-submitting prompt to ${injectedCount} AI browsers!`);
-      } else {
-        this.showToast(`📝 Filled prompt into ${injectedCount} AI browsers (ready for review).`);
       }
+    });
+
+    const modeLabels: Record<string, string> = {
+      single: 'Single Focus AI',
+      dual: 'Dual View (2 Active AIs)',
+      triple: '3-Split View (3 Active AIs)',
+      quad: '4-Split View (4 Active AIs)',
+      penta: '5-Split View (5 Active AIs)',
+      all: 'All View (6 Active AIs)',
+    };
+
+    const label = modeLabels[this.state.layout] || `${sentCount} Active AIs`;
+
+    if (this.state.autoSubmit && isDesktop) {
+      this.showToast(`🚀 Auto-Sending broadcast to ${sentCount} Active AIs [${label}]: ${activeServices.map(s => s.shortName).join(', ')}`);
     } else {
-      // In Web Browser Preview mode:
-      this.showToast('⚡ Prompt copied to clipboard! In web preview, press Ctrl+V then Enter in each pane.');
+      this.showToast(`⚡ Broadcast Prompt filled into ${sentCount} Active AIs [${label}]: ${activeServices.map(s => s.shortName).join(', ')}`);
+    }
+  }
+
+  /**
+   * Captures the current chats with all ACTIVE AIs (based on visible layout view selection)
+   * and saves them locally into Sentinel Session History grouped per AI!
+   */
+  public captureActiveAiChats(): void {
+    const activeServices = this.getActiveServices();
+    if (!activeServices || activeServices.length === 0) {
+      this.showToast('No active visible AI browsers found to capture.');
+      return;
+    }
+
+    let capturedCount = 0;
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    activeServices.forEach((svc) => {
+      let promptText = '';
+      let responseText = '';
+
+      if ((window as any).state?.externalSessions && (window as any).state.externalSessions[svc.id]) {
+        const sess = (window as any).state.externalSessions[svc.id];
+        promptText = sess.lastPrompt || '';
+        responseText = sess.lastResponse || '';
+      }
+
+      if (!promptText && !responseText) {
+        promptText = this.state.broadcastPrompt.trim() || 'Captured Multi-AI Workstation State';
+        responseText = `Active session state captured from ${svc.name} (${svc.badge}).`;
+      }
+
+      if (typeof (window as any).saveCapturedSession === 'function') {
+        (window as any).saveCapturedSession({
+          engineSource: svc.id,
+          title: `[${svc.shortName}] ${promptText ? promptText.substring(0, 32) + '...' : 'Captured Chat - ' + timeStr}`,
+          prompt: promptText,
+          response: responseText,
+        });
+        capturedCount++;
+      }
+    });
+
+    if (capturedCount > 0) {
+      this.showToast(`💾 Captured chats for ${capturedCount} Active AIs (${activeServices.map(s => s.shortName).join(', ')}) saved under Session History!`);
+    } else {
+      this.showToast('No active AI chats captured.');
     }
   }
 
@@ -758,28 +984,48 @@ class MultiAiHubManager {
           </div>
         </div>
 
-        <!-- Center: Layout Selectors (Triple, Dual, Quad, Single, Horizontal) -->
-        <div class="flex items-center bg-gray-100 dark:bg-intel-850 p-0.5 rounded-xl border border-gray-200 dark:border-intel-border text-xs shrink-0 shadow-inner">
-          <button id="multiAiLayoutTripleBtn" type="button" class="px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${this.state.layout === 'triple' ? 'bg-purple-600 text-white shadow-xs' : 'text-gray-700 dark:text-slate-300 hover:text-gray-950 dark:hover:text-white'}" title="Triple Split (Copilot | Gemini | ChatGPT)">
-            <span>▥</span>
-            <span class="hidden lg:inline text-[11px]">3-Split</span>
-          </button>
-          <button id="multiAiLayoutDualBtn" type="button" class="px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${this.state.layout === 'dual' ? 'bg-purple-600 text-white shadow-xs' : 'text-gray-700 dark:text-slate-300 hover:text-gray-950 dark:hover:text-white'}" title="Dual Side-by-Side (50% / 50%)">
-            <span>◫</span>
-            <span class="hidden lg:inline text-[11px]">2-Split</span>
-          </button>
-          <button id="multiAiLayoutQuadBtn" type="button" class="px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${this.state.layout === 'quad' ? 'bg-purple-600 text-white shadow-xs' : 'text-gray-700 dark:text-slate-300 hover:text-gray-950 dark:hover:text-white'}" title="Quad Grid (4 Browsers)">
-            <span>⊞</span>
-            <span class="hidden lg:inline text-[11px]">4-Grid</span>
-          </button>
-          <button id="multiAiLayoutSingleBtn" type="button" class="px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${this.state.layout === 'single' ? 'bg-purple-600 text-white shadow-xs' : 'text-gray-700 dark:text-slate-300 hover:text-gray-950 dark:hover:text-white'}" title="Single Focus View">
+        <!-- Center: Layout Selectors (1. Single, 2. Dual, 3. 3-Split, 4. 4-Split, 5. 5-Split, 6. All) -->
+        <div class="flex items-center bg-gray-100 dark:bg-intel-850 p-0.5 rounded-xl border border-gray-200 dark:border-intel-border text-xs shrink-0 shadow-inner overflow-x-auto max-w-[58vw]">
+          <button id="multiAiLayoutSingleBtn" type="button" class="px-2 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0 ${this.state.layout === 'single' ? 'bg-purple-600 text-white shadow-xs' : 'text-gray-700 dark:text-slate-300 hover:text-gray-950 dark:hover:text-white'}" title="1. Single AI Focus View">
             <span>🔲</span>
-            <span class="hidden lg:inline text-[11px]">Focus</span>
+            <span class="text-[11px]">Single</span>
+          </button>
+          <button id="multiAiLayoutDualBtn" type="button" class="px-2 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0 ${this.state.layout === 'dual' ? 'bg-purple-600 text-white shadow-xs' : 'text-gray-700 dark:text-slate-300 hover:text-gray-950 dark:hover:text-white'}" title="2. Dual Side-by-Side (2 Columns, 1 Row)">
+            <span>◫</span>
+            <span class="text-[11px]">Dual</span>
+          </button>
+          <button id="multiAiLayoutTripleBtn" type="button" class="px-2 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0 ${this.state.layout === 'triple' ? 'bg-purple-600 text-white shadow-xs' : 'text-gray-700 dark:text-slate-300 hover:text-gray-950 dark:hover:text-white'}" title="3. 3-Split (3 Columns, 1 Row)">
+            <span>▥</span>
+            <span class="text-[11px]">3-Split</span>
+          </button>
+          <button id="multiAiLayoutQuadBtn" type="button" class="px-2 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0 ${this.state.layout === 'quad' ? 'bg-purple-600 text-white shadow-xs' : 'text-gray-700 dark:text-slate-300 hover:text-gray-950 dark:hover:text-white'}" title="4. 4-Split (2x2 Grid)">
+            <span>⊞</span>
+            <span class="text-[11px]">4-Split</span>
+          </button>
+          <button id="multiAiLayoutPentaBtn" type="button" class="px-2 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0 ${this.state.layout === 'penta' ? 'bg-purple-600 text-white shadow-xs' : 'text-gray-700 dark:text-slate-300 hover:text-gray-950 dark:hover:text-white'}" title="5. 5-Split (5 AIs in a 3-Column Grid)">
+            <span>☷</span>
+            <span class="text-[11px]">5-Split</span>
+          </button>
+          <button id="multiAiLayoutAllBtn" type="button" class="px-2 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0 ${this.state.layout === 'all' ? 'bg-purple-600 text-white shadow-xs' : 'text-gray-700 dark:text-slate-300 hover:text-gray-950 dark:hover:text-white'}" title="6. All (6 AIs in a 3-Column Grid including Custom URL)">
+            <span>▦</span>
+            <span class="text-[11px]">All (6 AIs)</span>
           </button>
         </div>
 
-        <!-- Right: Actions (+ Pane, Session Cookie Guide, Close / Back to Local) -->
+        <!-- Right: Actions (+ Pane, Capture Chat, Session Cookie Guide, Close / Back to Local) -->
         <div class="flex items-center gap-2">
+          <!-- Capture Chat Button -->
+          <button
+            id="multiAiHeaderCaptureBtn"
+            type="button"
+            onclick="window.multiAiHub.captureActiveAiChats()"
+            class="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+            title="Capture chats from all active visible AIs and save to Sentinel Session History"
+          >
+            <span>💾</span>
+            <span class="hidden sm:inline">Capture Chat</span>
+          </button>
+
           <!-- Add Browser Pane Button -->
           <div class="relative group">
             <button id="multiAiAddPaneBtn" type="button" class="px-2.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition cursor-pointer" title="Add another AI browser pane">
@@ -872,6 +1118,17 @@ class MultiAiHubManager {
               </button>
 
               <button
+                id="multiAiDockCaptureBtn"
+                type="button"
+                onclick="window.multiAiHub.captureActiveAiChats()"
+                class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md flex items-center justify-center gap-1.5 transition cursor-pointer"
+                title="Capture chats from all active visible AIs and save to Sentinel Session History"
+              >
+                <span>💾</span>
+                <span>Capture Chat</span>
+              </button>
+
+              <button
                 id="multiAiCopyPromptBtn"
                 type="button"
                 class="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-intel-850 dark:hover:bg-intel-800 text-gray-800 dark:text-slate-200 border border-gray-300 dark:border-intel-border text-[11px] font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
@@ -913,7 +1170,7 @@ class MultiAiHubManager {
               <h4 class="font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5 mb-1">
                 <span>✨</span> Google Gemini
               </h4>
-              <p>Log in with your Google Workspace or Gmail account for Gemini Advanced. Google allows login via the top-level companion window or embedded webview with standard Chrome User-Agent spoofing.</p>
+              <p>Log in with your Google Workspace or Gmail account for Gemini Advanced. To protect passkeys and WebAuthn, Sentinel Studio uses the <strong>Desktop App OAuth 2.0 Loopback Flow</strong> (RFC 8252) via your system browser rather than blocking inside embedded webviews.</p>
             </div>
 
             <div class="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60">
@@ -944,29 +1201,49 @@ class MultiAiHubManager {
 
     // Apply CSS layout classes
     const layout = this.state.layout;
-    gridEl.className = 'flex-1 grid gap-2.5 sm:gap-3.5 h-full overflow-hidden transition-all duration-200';
+    gridEl.className = 'flex-1 grid gap-2 sm:gap-3 h-full overflow-hidden transition-all duration-200';
 
     if (this.state.panes.some((p) => p.isMaximized)) {
       gridEl.classList.add('grid-cols-1', 'grid-rows-1');
     } else if (layout === 'single') {
+      // 1. Single (1 Focus AI)
       gridEl.classList.add('grid-cols-1', 'grid-rows-1');
     } else if (layout === 'dual') {
-      gridEl.classList.add('grid-cols-1', 'md:grid-cols-2');
+      // 2. Dual (side by side: 2 columns, 1 row)
+      gridEl.classList.add('grid-cols-1', 'md:grid-cols-2', 'grid-rows-1');
     } else if (layout === 'triple') {
-      gridEl.classList.add('grid-cols-1', 'md:grid-cols-3');
+      // 3. 3-Split (strictly 3 columns, 1 row)
+      gridEl.classList.add('grid-cols-1', 'md:grid-cols-3', 'grid-rows-1');
     } else if (layout === 'quad') {
+      // 4. 4-Split (2x2 grid)
       gridEl.classList.add('grid-cols-1', 'md:grid-cols-2', 'grid-rows-2');
-    } else if (layout === 'horizontal') {
-      gridEl.classList.add('grid-cols-1', 'grid-rows-2');
+    } else if (layout === 'penta') {
+      // 5. 5-Split (5 AIs in a 3-column grid)
+      gridEl.classList.add('grid-cols-1', 'md:grid-cols-3', 'grid-rows-2');
+    } else if (layout === 'all') {
+      // 6. All (6 AIs in a 3x2 grid: 5 AIs + Custom URL browser)
+      gridEl.classList.add('grid-cols-1', 'md:grid-cols-3', 'grid-rows-2');
     }
 
     const isDesktop = typeof (window as any).sentinelDesktop !== 'undefined' && !!(window as any).sentinelDesktop.isDesktop;
 
-    const visiblePanes = this.state.panes.some((p) => p.isMaximized)
-      ? this.state.panes.filter((p) => p.isMaximized)
-      : layout === 'single'
-      ? this.state.panes.slice(0, 1)
-      : this.state.panes;
+    let targetCount = 3;
+    if (layout === 'single') targetCount = 1;
+    else if (layout === 'dual') targetCount = 2;
+    else if (layout === 'triple') targetCount = 3;
+    else if (layout === 'quad') targetCount = 4;
+    else if (layout === 'penta') targetCount = 5;
+    else if (layout === 'all') targetCount = 6;
+
+    let visiblePanes: BrowserPane[] = [];
+    if (this.state.panes.some((p) => p.isMaximized)) {
+      visiblePanes = this.state.panes.filter((p) => p.isMaximized);
+    } else if (layout === 'single') {
+      const active = this.state.panes.find((p) => p.id === this.state.activePaneId);
+      visiblePanes = active ? [active] : this.state.panes.slice(0, 1);
+    } else {
+      visiblePanes = this.state.panes.slice(0, targetCount);
+    }
 
     gridEl.innerHTML = visiblePanes
       .map((pane) => {
@@ -977,9 +1254,14 @@ class MultiAiHubManager {
           (s) => `<option value="${s.id}" ${s.id === pane.serviceId ? 'selected' : ''}>${s.icon} ${s.shortName}</option>`
         ).join('');
 
-        // Embedded Browser Frame: native <webview> in Electron, high-spec <iframe> in Browser
+        // Embedded Browser Frame:
+        // CRITICAL SECURITY ENFORCEMENT: Google authentication (accounts.google.com) strictly blocks
+        // embedded webviews, iframes, and passkeys/WebAuthn ("Disallowed User-Agent").
+        // For Gemini, replace embedded iframe/webview with RFC 8252 Desktop Loopback Authentication.
         let browserElement = '';
-        if (isDesktop) {
+        if (pane.serviceId === 'gemini') {
+          browserElement = googleAuth.generateGeminiPaneHtml();
+        } else if (isDesktop) {
           browserElement = `
             <webview
               id="browser_frame_${pane.id}"
@@ -1016,11 +1298,33 @@ class MultiAiHubManager {
           `;
         }
 
+        const singleFocusBar = layout === 'single' ? `
+          <div class="px-3 py-1.5 bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 dark:from-purple-950/60 dark:via-indigo-950/60 dark:to-blue-950/60 border-b border-purple-200 dark:border-purple-900/50 flex items-center gap-1.5 overflow-x-auto text-xs shrink-0 select-none">
+            <span class="text-[10px] font-extrabold uppercase tracking-wider text-purple-700 dark:text-purple-300 mr-1 flex items-center gap-1 shrink-0">
+              <span>🎯</span> Focus AI:
+            </span>
+            ${AI_SERVICES.map((s) => `
+              <button
+                onclick="window.multiAiHub.switchSingleFocus('${s.id}')"
+                class="px-2.5 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  pane.serviceId === s.id
+                    ? 'bg-purple-600 text-white border-purple-500 shadow-xs'
+                    : 'bg-white dark:bg-intel-850 text-gray-700 dark:text-slate-300 border-gray-300 dark:border-intel-border hover:bg-gray-100 dark:hover:bg-intel-800'
+                }"
+              >
+                <span>${s.icon}</span>
+                <span>${s.shortName}</span>
+              </button>
+            `).join('')}
+          </div>
+        ` : '';
+
         return `
           <div
             id="pane_container_${pane.id}"
             class="flex flex-col bg-white dark:bg-[#1e1f23] border border-gray-300 dark:border-intel-border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow relative min-w-0 min-h-0"
           >
+            ${singleFocusBar}
             <!-- PANE BROWSER TOP NAVIGATION & CONTROLS -->
             <div class="p-2 border-b border-gray-200 dark:border-intel-border bg-gray-50 dark:bg-[#25262b] flex items-center justify-between gap-1.5 shrink-0">
               <!-- Left: Service Selector & Logo -->
@@ -1099,10 +1403,12 @@ class MultiAiHubManager {
   private updateLayoutButtons(): void {
     const layout = this.state.layout;
     const btnIds: Record<string, string> = {
-      triple: 'multiAiLayoutTripleBtn',
-      dual: 'multiAiLayoutDualBtn',
-      quad: 'multiAiLayoutQuadBtn',
       single: 'multiAiLayoutSingleBtn',
+      dual: 'multiAiLayoutDualBtn',
+      triple: 'multiAiLayoutTripleBtn',
+      quad: 'multiAiLayoutQuadBtn',
+      penta: 'multiAiLayoutPentaBtn',
+      all: 'multiAiLayoutAllBtn',
     };
 
     Object.entries(btnIds).forEach(([key, id]) => {
@@ -1110,27 +1416,33 @@ class MultiAiHubManager {
       if (el) {
         if (key === layout) {
           el.className =
-            'px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer bg-purple-600 text-white shadow-xs';
+            'px-2 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0 bg-purple-600 text-white shadow-xs';
         } else {
           el.className =
-            'px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer text-gray-700 dark:text-slate-300 hover:text-gray-950 dark:hover:text-white';
+            'px-2 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0 text-gray-700 dark:text-slate-300 hover:text-gray-950 dark:hover:text-white';
         }
       }
     });
   }
 
   private attachDomHandlers(): void {
-    const tripleBtn = document.getElementById('multiAiLayoutTripleBtn');
-    if (tripleBtn) tripleBtn.onclick = () => this.setLayout('triple');
+    const singleBtn = document.getElementById('multiAiLayoutSingleBtn');
+    if (singleBtn) singleBtn.onclick = () => this.setLayout('single');
 
     const dualBtn = document.getElementById('multiAiLayoutDualBtn');
     if (dualBtn) dualBtn.onclick = () => this.setLayout('dual');
 
+    const tripleBtn = document.getElementById('multiAiLayoutTripleBtn');
+    if (tripleBtn) tripleBtn.onclick = () => this.setLayout('triple');
+
     const quadBtn = document.getElementById('multiAiLayoutQuadBtn');
     if (quadBtn) quadBtn.onclick = () => this.setLayout('quad');
 
-    const singleBtn = document.getElementById('multiAiLayoutSingleBtn');
-    if (singleBtn) singleBtn.onclick = () => this.setLayout('single');
+    const pentaBtn = document.getElementById('multiAiLayoutPentaBtn');
+    if (pentaBtn) pentaBtn.onclick = () => this.setLayout('penta');
+
+    const allBtn = document.getElementById('multiAiLayoutAllBtn');
+    if (allBtn) allBtn.onclick = () => this.setLayout('all');
 
     const addPaneBtn = document.getElementById('multiAiAddPaneBtn');
     if (addPaneBtn) addPaneBtn.onclick = () => this.addPane('custom');

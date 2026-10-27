@@ -476,6 +476,7 @@ interface ChatSession {
   }>;
   gemId: string;
   updatedAt: number;
+  engineSource?: string;
 }
 
 interface FolderItem {
@@ -657,6 +658,8 @@ interface IntelState {
   skillsSearchQuery: string;
   editingSkillId: string | null;
 
+  sessionAiFilter: string;
+
   // Step 3: Executive Multi-AI & Knowledge OS Workstation
   dispatchTarget: 'local' | 'copilot' | 'chatgpt' | 'gemini' | 'broadcast';
   multiAiOpen: boolean;
@@ -699,6 +702,7 @@ const state: IntelState = {
   folders: [],
   activeFolderId: null,
   searchQuery: '',
+  sessionAiFilter: 'all',
   lastBackupTimestamp: null,
   autoBackupInterval: '5days',
   gems: [],
@@ -8279,6 +8283,17 @@ function initHistoryAndBackupControls() {
     });
   }
 
+  const aiFilterSelect = document.getElementById('sessionAiFilterSelect') as HTMLSelectElement | null;
+  if (aiFilterSelect) {
+    aiFilterSelect.value = state.sessionAiFilter || 'all';
+    aiFilterSelect.addEventListener('change', () => {
+      state.sessionAiFilter = aiFilterSelect.value;
+      renderChatHistoryUI();
+      const selectedOptionText = aiFilterSelect.options[aiFilterSelect.selectedIndex]?.text || 'Filter';
+      showToast(`History Filter: ${selectedOptionText}`, 'info');
+    });
+  }
+
   if (addFolderBtn) {
     addFolderBtn.addEventListener('click', () => {
       openFolderModal('create');
@@ -11516,6 +11531,83 @@ function moveSessionToFolder(sessionId: string, targetFolderId: string | null) {
   renderChatHistoryUI();
 }
 
+export function saveCapturedSession(data: {
+  engineSource: string;
+  title: string;
+  prompt: string;
+  response: string;
+  messages?: Array<{ role: 'user' | 'assistant'; text?: string; rawText?: string; html?: string }>;
+}) {
+  const src = data.engineSource || 'sentinel';
+  const engineMap: Record<string, string> = {
+    sentinel: 'Sentinel (Local Edge)',
+    copilot: 'Microsoft Copilot',
+    gemini: 'Google Gemini',
+    chatgpt: 'OpenAI ChatGPT',
+    claude: 'Anthropic Claude',
+    perplexity: 'Perplexity AI',
+    custom: 'Custom AI Browser',
+  };
+
+  const groupName = engineMap[src] || 'Multi-AI Captures';
+
+  // Find or create AI folder group for this AI source
+  let targetFolder = state.folders.find((f) => f.name.toLowerCase() === groupName.toLowerCase());
+  if (!targetFolder) {
+    const folderColorMap: Record<string, string> = {
+      copilot: '#0078D4',
+      gemini: '#1A73E8',
+      chatgpt: '#10A37F',
+      claude: '#D97706',
+      perplexity: '#8B5CF6',
+      custom: '#4F46E5',
+      sentinel: '#00C4E7',
+    };
+    const folderIconMap: Record<string, string> = {
+      copilot: '🔵',
+      gemini: '✨',
+      chatgpt: '🟢',
+      claude: '🟠',
+      perplexity: '🟣',
+      custom: '🌐',
+      sentinel: '🤖',
+    };
+
+    targetFolder = {
+      id: `folder_${src}_${Date.now()}`,
+      name: groupName,
+      createdAt: Date.now(),
+      collapsed: false,
+      color: folderColorMap[src] || '#1A73E8',
+      icon: folderIconMap[src] || '📁',
+    };
+    state.folders.push(targetFolder);
+  }
+
+  // Create new ChatSession
+  const newSessionId = `session_${src}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const messages = data.messages || [
+    { role: 'user', text: data.prompt, rawText: data.prompt },
+    { role: 'assistant', text: data.response, rawText: data.response },
+  ];
+
+  const newSession: ChatSession = {
+    id: newSessionId,
+    title: data.title,
+    folderId: targetFolder ? targetFolder.id : null,
+    messages: messages,
+    gemId: state.activeGemId || 'gem_general_assistant',
+    updatedAt: Date.now(),
+    engineSource: src,
+  };
+
+  state.sessions.unshift(newSession);
+  persistSessions();
+  renderChatHistoryUI();
+}
+
+(window as any).saveCapturedSession = saveCapturedSession;
+
 function renderChatHistoryUI() {
   const foldersContainer = document.getElementById('foldersListContainer');
   const sessionsContainer = document.getElementById('sessionsList');
@@ -11525,8 +11617,16 @@ function renderChatHistoryUI() {
   sessionsContainer.innerHTML = '';
 
   const query = (state.searchQuery || '').trim().toLowerCase();
+  const aiFilter = state.sessionAiFilter || 'all';
 
   const filteredSessions = state.sessions.filter((s) => {
+    // 1. AI Engine Source Filter
+    if (aiFilter !== 'all') {
+      const src = s.engineSource || 'sentinel';
+      if (src !== aiFilter) return false;
+    }
+
+    // 2. Text Search Query Filter
     if (!query) return true;
     if (s.title && s.title.toLowerCase().includes(query)) return true;
     return (s.messages || []).some((m) => (m.text || m.rawText || '').toLowerCase().includes(query));
@@ -11536,6 +11636,7 @@ function renderChatHistoryUI() {
   state.folders.forEach((folder) => {
     const folderSessions = filteredSessions.filter((s) => s.folderId === folder.id);
     if (query && folderSessions.length === 0) return;
+    if (aiFilter !== 'all' && folderSessions.length === 0) return;
 
     const fldElem = document.createElement('div');
     fldElem.className = 'folder-card rounded-xl border border-gray-300 dark:border-intel-border bg-white dark:bg-intel-900 overflow-hidden shadow-2xs transition-all';
@@ -11664,7 +11765,7 @@ function renderChatHistoryUI() {
   } else if (filteredSessions.length === 0) {
     sessionsContainer.innerHTML = `
       <div class="p-3 text-center text-xs text-gray-700 dark:text-slate-300 italic font-semibold">
-        ${query ? 'No matching conversations found.' : 'No conversation history yet.'}
+        ${query ? 'No matching conversations found.' : 'No conversation history for selected filter.'}
       </div>
     `;
   }
@@ -11678,6 +11779,17 @@ function createSessionItemElem(session: ChatSession) {
       ? 'active-session-item bg-blue-600 text-white font-bold border border-blue-500 shadow-xs'
       : 'session-item-inactive bg-white dark:bg-intel-900 text-gray-900 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-intel-850 border border-gray-200 dark:border-intel-border shadow-2xs'
   }`;
+
+  const engineIcons: Record<string, string> = {
+    copilot: '🔵',
+    gemini: '✨',
+    chatgpt: '🟢',
+    claude: '🟠',
+    perplexity: '🟣',
+    custom: '🌐',
+    sentinel: '🤖',
+  };
+  const icon = engineIcons[session.engineSource || 'sentinel'] || '💬';
 
   // HTML5 Drag and Drop
   item.setAttribute('draggable', 'true');
@@ -11694,7 +11806,7 @@ function createSessionItemElem(session: ChatSession) {
 
   item.innerHTML = `
     <div class="flex items-center gap-1.5 truncate flex-1 pr-1 min-w-0">
-      <span class="text-gray-600 dark:text-slate-400 text-xs shrink-0 session-chat-icon">💬</span>
+      <span class="text-xs shrink-0 session-chat-icon">${icon}</span>
       <span class="truncate session-title-text font-semibold text-gray-900 dark:text-slate-200 group-hover:text-blue-700 dark:group-hover:text-cyan-300" title="${escapeHtml(session.title)}">${escapeHtml(session.title)}</span>
     </div>
     <div class="flex items-center gap-0.5 shrink-0">
@@ -12153,15 +12265,21 @@ export function renderMultiAiWorkspacePanes() {
             </div>
           </div>
           <div class="flex-1 relative w-full h-full bg-white">
-            <webview
-              id="${engKey}Webview"
-              src="${cfg.url}"
-              partition="persist:sentinel_ai_workspace"
-              allowpopups="true"
-              webpreferences="contextIsolation=yes, allowRunningInsecureContent=no"
-              class="w-full h-full border-0"
-              style="width: 100%; height: 100%; display: flex;"
-            ></webview>
+            ${
+              engKey === 'gemini' && (window as any).googleAuth
+                ? (window as any).googleAuth.generateGeminiPaneHtml()
+                : `
+                  <webview
+                    id="${engKey}Webview"
+                    src="${cfg.url}"
+                    partition="persist:sentinel_ai_workspace"
+                    allowpopups="true"
+                    webpreferences="contextIsolation=yes, allowRunningInsecureContent=no"
+                    class="w-full h-full border-0"
+                    style="width: 100%; height: 100%; display: flex;"
+                  ></webview>
+                `
+            }
           </div>
         </div>
       `;

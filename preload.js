@@ -15,5 +15,13 @@ contextBridge.exposeInMainWorld('sentinelDesktop', {
   getVersion: () => ipcRenderer.invoke('app:get-version'),
   openCompanionWindow: (url, partition) => ipcRenderer.invoke('multi-ai:open-companion', url, partition),
   clearPartition: (partition) => ipcRenderer.invoke('multi-ai:clear-partition', partition),
-  isDesktop: true
+  openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+
+  // Google Desktop Loopback OAuth APIs (RFC 8252 Compliance)
+  googleLogin: (options) => ipcRenderer.invoke('auth:google-login', options),
+  googleCancel: () => ipcRenderer.invoke('auth:google-cancel'),
+  getGoogleSession: () => ipcRenderer.invoke('auth:get-session'),
+  googleLogout: () => ipcRenderer.invoke('auth:google-logout'),
+
+  isDesktop: true,
 });
