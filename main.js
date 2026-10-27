@@ -3,78 +3,34 @@
  * SENTINEL STUDIO™ — ELECTRON STANDALONE DESKTOP WORKSTATION
  * Enterprise Capability Hub & Multi-AI OS
  * Architect & Developer: Patrick Jay F. Tanap, CPA, CICA
- * Main Process, Partition Manager & Cookie Jar Synchronization Engine
+ * Main Process, Partition Manager & Browser-Based Session Relay
  * =====================================================================
  */
 
 const { app, BrowserWindow, ipcMain, dialog, session, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 
-// 1. Chromium Command Line Switches: Hardware Acceleration, WebGPU, Anti-Automation, and WebAuthn Suppression
+// 1. Hardware Acceleration and WebGPU Support
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('enable-unsafe-webgpu');
 app.commandLine.appendSwitch('enable-features', 'Vulkan,WebGPU');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
-app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
-app.commandLine.appendSwitch('disable-features', 'WebAuthentication,WebAuthenticationConditionalUI');
 
 const PERSISTENT_SESSION_PARTITION = 'persist:sentinel_ai_workspace';
 const SHARED_PARTITION = 'persist:sentinel_ai_workspace';
-const CHROME_USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
-
-app.userAgentFallback = CHROME_USER_AGENT;
 
 let mainWindowInstance = null;
-
-// 2. WebAuthn Runtime Interception & Rejection Script
-const DISABLE_PASSKEY_INJECTION = `
-  (() => {
-    try {
-      if ('PublicKeyCredential' in window) {
-        Object.defineProperty(window, 'PublicKeyCredential', {
-          get: () => undefined,
-          configurable: true
-        });
-      }
-
-      if (navigator.credentials && navigator.credentials.get) {
-        const originalGet = navigator.credentials.get.bind(navigator.credentials);
-        navigator.credentials.get = function(options) {
-          if (options && (options.publicKey || options.mediation === 'conditional')) {
-            return Promise.reject(new DOMException("WebAuthn platform authenticators are not supported in this client environment.", "NotSupportedError"));
-          }
-          return originalGet(options);
-        };
-      }
-    } catch (e) {
-      console.warn("Passkey suppression notice:", e);
-    }
-  })();
-`;
+let sessionRelayServer = null;
 
 /**
- * Configure User-Agent, Client Hints, and Relaxed Frame Headers for a Session
+ * Clean Frame Headers for Embedded Workstation Webviews
  */
 function configurePartitionHeaders(targetSession) {
   if (!targetSession) return;
-  try {
-    targetSession.setUserAgent(CHROME_USER_AGENT);
-  } catch (_e) {
-    // Ignore
-  }
 
   const filter = { urls: ['*://*/*'] };
-
-  targetSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
-    const requestHeaders = { ...details.requestHeaders };
-    requestHeaders['User-Agent'] = CHROME_USER_AGENT;
-    requestHeaders['Sec-CH-UA'] = '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"';
-    requestHeaders['Sec-CH-UA-Mobile'] = '?0';
-    requestHeaders['Sec-CH-UA-Platform'] = '"Windows"';
-    callback({ cancel: false, requestHeaders });
-  });
 
   targetSession.webRequest.onHeadersReceived(filter, (details, callback) => {
     const responseHeaders = { ...details.responseHeaders };
@@ -91,139 +47,179 @@ function configurePartitionHeaders(targetSession) {
         });
       }
     });
+
     // Critical: Always invoke callback to prevent hanging Chromium network requests
     callback({ cancel: false, responseHeaders });
   });
 }
 
 /**
- * Cookie Jar Synchronization Engine:
- * Clones authenticated .google.com cookies into target persistent partitions
+ * Temporary Local Session Relay Server on 127.0.0.1:49152
  */
-async function syncGoogleCookies(sourceSession, targetSession) {
-  if (!sourceSession || !targetSession) return false;
+function startSessionRelayServer(targetMainWindow) {
+  if (sessionRelayServer) {
+    try {
+      sessionRelayServer.close();
+    } catch (_) {}
+    sessionRelayServer = null;
+  }
+
   try {
-    const cookies = await sourceSession.cookies.get({ domain: '.google.com' });
-    for (const cookie of cookies) {
-      const scheme = cookie.secure ? 'https' : 'http';
-      const domainClean = cookie.domain.startsWith('.') ? cookie.domain.slice(1) : cookie.domain;
-      const url = `${scheme}://${domainClean}${cookie.path || '/'}`;
+    sessionRelayServer = http.createServer((req, res) => {
       try {
-        await targetSession.cookies.set({
-          url: url,
-          name: cookie.name,
-          value: cookie.value,
-          domain: cookie.domain,
-          path: cookie.path || '/',
-          secure: cookie.secure,
-          httpOnly: cookie.httpOnly,
-          expirationDate: cookie.expirationDate,
-          sameSite: cookie.sameSite || 'unspecified',
-        });
-      } catch (_cookieErr) {
-        // Ignore single cookie transfer errors
-      }
+        const parsedUrl = new URL(req.url, 'http://127.0.0.1:49152');
+
+        if (parsedUrl.pathname === '/callback' || parsedUrl.pathname === '/auth/callback') {
+          const engine = parsedUrl.searchParams.get('engine') || 'gemini';
+
+          const win = targetMainWindow || mainWindowInstance;
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('auth:login-success', { engine });
+          }
+
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Session Connected — Sentinel Studio</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #06234D;
+      color: #E2E8F0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 24px;
     }
-    return true;
-  } catch (e) {
-    console.warn('[Cookie Jar Sync Notice]:', e?.message);
-    return false;
+    .card {
+      background: #0B254E;
+      border: 1px solid #00C4E7;
+      border-radius: 20px;
+      padding: 36px;
+      max-width: 440px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    }
+    .icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: rgba(16, 185, 129, 0.2);
+      border: 2px solid #10B981;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      color: #34D399;
+      font-size: 26px;
+      font-weight: bold;
+    }
+    h2 { font-size: 20px; margin-bottom: 8px; color: #FFFFFF; }
+    p { font-size: 13px; line-height: 1.6; color: #94A3B8; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✓</div>
+    <h2>Authentication Relayed</h2>
+    <p>Your session has been communicated to <strong>Sentinel Studio</strong>. You can close this tab and return to the workstation.</p>
+  </div>
+  <script>
+    setTimeout(() => {
+      try { window.close(); } catch(e) {}
+    }, 2000);
+  </script>
+</body>
+</html>`);
+
+          setTimeout(() => {
+            if (sessionRelayServer) {
+              try { sessionRelayServer.close(); } catch (_) {}
+              sessionRelayServer = null;
+            }
+          }, 3000);
+          return;
+        }
+
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Relay Server Error');
+      }
+    });
+
+    sessionRelayServer.listen(49152, '127.0.0.1', () => {
+      console.info('[Session Relay] Listening on http://127.0.0.1:49152/callback');
+    });
+
+    sessionRelayServer.on('error', (err) => {
+      console.warn('[Session Relay Server Error]:', err.message);
+    });
+  } catch (err) {
+    console.warn('[Session Relay Init Exception]:', err);
   }
 }
 
 /**
- * Google Desktop Authentication Flow via Internal Shared-Partition Window
+ * Top-Level BrowserWindow Direct Sign-In (NOT a webview)
  */
-async function startGoogleAuthFlow(targetMainWindow) {
-  return new Promise((resolve) => {
-    const authSession = session.fromPartition(SHARED_PARTITION);
-    configurePartitionHeaders(authSession);
+function openDirectLoginWindow(targetMainWindow, engine = 'gemini') {
+  let targetUrl = 'https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app';
+  if (engine === 'chatgpt') {
+    targetUrl = 'https://chatgpt.com/auth/login';
+  } else if (engine === 'claude') {
+    targetUrl = 'https://claude.ai/login';
+  } else if (engine === 'perplexity') {
+    targetUrl = 'https://www.perplexity.ai';
+  } else if (engine === 'copilot') {
+    targetUrl = 'https://copilot.microsoft.com';
+  }
 
-    const authWin = new BrowserWindow({
-      width: 540,
-      height: 720,
-      title: 'Sign In with Google — Sentinel Studio Workspace',
-      autoHideMenuBar: true,
-      webPreferences: {
-        partition: SHARED_PARTITION,
-        contextIsolation: true,
-        nodeIntegration: false,
-      },
-    });
+  const authWin = new BrowserWindow({
+    width: 500,
+    height: 650,
+    title: 'Sign In — Sentinel Studio Workspace',
+    autoHideMenuBar: true,
+    webPreferences: {
+      partition: SHARED_PARTITION,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
 
-    authWin.webContents.setUserAgent(CHROME_USER_AGENT);
-    authWin.webContents.on('dom-ready', () => {
-      authWin.webContents.executeJavaScript(DISABLE_PASSKEY_INJECTION).catch(() => {});
-    });
+  authWin.loadURL(targetUrl);
 
-    let resolved = false;
+  const checkFinish = (url) => {
+    const isLoginComplete =
+      url.includes('gemini.google.com/app') ||
+      url.includes('myaccount.google.com') ||
+      (url.includes('chatgpt.com') && !url.includes('/auth/')) ||
+      (url.includes('claude.ai') && !url.includes('/login')) ||
+      (url.includes('perplexity.ai') && !url.includes('/login')) ||
+      (url.includes('copilot.microsoft.com') && !url.includes('login'));
 
-    const checkAndFinish = async (url) => {
-      if (resolved) return;
-      const isAuthFinished =
-        url.includes('gemini.google.com/app') ||
-        url.includes('myaccount.google.com') ||
-        (url.includes('google.com') &&
-          !url.includes('/signin/') &&
-          !url.includes('/ServiceLogin') &&
-          !url.includes('/identifier') &&
-          !url.includes('/challenge/') &&
-          !url.includes('/v3/signin') &&
-          !url.includes('/speedbump'));
-
-      if (isAuthFinished) {
-        resolved = true;
-        try {
-          await syncGoogleCookies(authSession, session.defaultSession);
-          ['copilot', 'gemini', 'chatgpt', 'claude', 'perplexity'].forEach(async (id) => {
-            try {
-              const s = session.fromPartition(`persist:sentinel_${id}`);
-              await syncGoogleCookies(authSession, s);
-            } catch (_e) {}
-          });
-        } catch (_syncErr) {}
-
+    if (isLoginComplete) {
+      setTimeout(() => {
+        if (!authWin.isDestroyed()) {
+          authWin.close();
+        }
         const win = targetMainWindow || mainWindowInstance;
         if (win && !win.isDestroyed()) {
-          win.webContents.send('auth:redirect-webview', {
-            target: 'gemini',
-            url: 'https://gemini.google.com/app',
-          });
+          win.webContents.send('auth:login-success', { engine });
         }
+      }, 800);
+    }
+  };
 
-        setTimeout(() => {
-          if (!authWin.isDestroyed()) {
-            authWin.close();
-          }
-        }, 800);
+  authWin.webContents.on('did-navigate', (_e, url) => checkFinish(url));
+  authWin.webContents.on('did-navigate-in-page', (_e, url) => checkFinish(url));
 
-        resolve({
-          success: true,
-          user: {
-            name: 'Patrick Jay F. Tanap, CPA, CICA',
-            email: 'patrick.tanap@filinvest.com',
-          },
-        });
-      }
-    };
-
-    authWin.webContents.on('did-navigate', (_event, url) => {
-      checkAndFinish(url);
-    });
-
-    authWin.webContents.on('did-navigate-in-page', (_event, url) => {
-      checkAndFinish(url);
-    });
-
-    authWin.on('closed', () => {
-      if (!resolved) {
-        resolved = true;
-        resolve({ success: false, error: 'Sign-in window closed by user.' });
-      }
-    });
-
-    authWin.loadURL('https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app');
-  });
+  return { success: true };
 }
 
 function createWindow() {
@@ -250,22 +246,13 @@ function createWindow() {
   const aiWorkspaceSession = session.fromPartition(PERSISTENT_SESSION_PARTITION);
   configurePartitionHeaders(aiWorkspaceSession);
 
-  ['copilot', 'gemini', 'chatgpt', 'claude', 'perplexity'].forEach((id) => {
-    try {
-      const s = session.fromPartition(`persist:sentinel_${id}`);
-      configurePartitionHeaders(s);
-    } catch (_e) {
-      // Continue
-    }
-  });
-
-  // 1. Intercept main window popups: Keep all AI and OAuth login flows inside Sentinel Studio
+  // 1. Intercept main window popups: Retain OAuth URLs inside internal top-level window
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     return {
       action: 'allow',
       overrideBrowserWindowOptions: {
-        width: 540,
-        height: 720,
+        width: 500,
+        height: 650,
         title: 'Sign In — Sentinel Studio Workspace',
         autoHideMenuBar: true,
         webPreferences: {
@@ -277,18 +264,14 @@ function createWindow() {
     };
   });
 
-  // 2. Intercept webview popups as soon as they attach & inject passkey suppression
+  // 2. Intercept webview popups
   mainWindow.webContents.on('did-attach-webview', (event, webContents) => {
-    webContents.on('dom-ready', () => {
-      webContents.executeJavaScript(DISABLE_PASSKEY_INJECTION).catch(() => {});
-    });
-
     webContents.setWindowOpenHandler(({ url }) => {
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
-          width: 540,
-          height: 720,
+          width: 500,
+          height: 650,
           title: 'Sign In — Sentinel Studio Workspace',
           autoHideMenuBar: true,
           webPreferences: {
@@ -301,16 +284,13 @@ function createWindow() {
     });
   });
 
-  // 3. Automatically close popup when login completes & attach passkey suppression
+  // 3. Automatically close child auth popups upon completed sign-in
   app.on('browser-window-created', (event, childWindow) => {
     if (childWindow !== mainWindow) {
-      childWindow.webContents.on('dom-ready', () => {
-        childWindow.webContents.executeJavaScript(DISABLE_PASSKEY_INJECTION).catch(() => {});
-      });
-
       childWindow.webContents.on('did-navigate', (e, navigatedUrl) => {
         const isAuthFinished =
           navigatedUrl.includes('gemini.google.com/app') ||
+          navigatedUrl.includes('myaccount.google.com') ||
           (navigatedUrl.includes('chatgpt.com') && !navigatedUrl.includes('/auth/')) ||
           (navigatedUrl.includes('claude.ai') && !navigatedUrl.includes('/login')) ||
           (navigatedUrl.includes('perplexity.ai') && !navigatedUrl.includes('/login')) ||
@@ -320,6 +300,9 @@ function createWindow() {
           setTimeout(() => {
             if (!childWindow.isDestroyed()) {
               childWindow.close();
+            }
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('auth:login-success', { engine: 'all' });
             }
           }, 800);
         }
@@ -349,8 +332,6 @@ function createWindow() {
     mainWindow.loadFile(rootHtmlPath).catch((err) => {
       console.error('Failed to load root index.html:', err);
     });
-  } else {
-    console.error('CRITICAL: No index.html found in dist/ or application root directory!');
   }
 
   return mainWindow;
@@ -418,7 +399,7 @@ function setupIpcHandlers() {
     return false;
   });
 
-  // Multi-AI Dedicated IPC Handlers
+  // Multi-AI Dedicated Companion Window
   ipcMain.handle('multi-ai:open-companion', async (_event, url, partitionName) => {
     const targetPartition = partitionName || PERSISTENT_SESSION_PARTITION;
     const targetSession = session.fromPartition(targetPartition);
@@ -450,25 +431,42 @@ function setupIpcHandlers() {
     }
   });
 
-  /**
-   * Google Desktop Cookie Jar Synchronization IPC Handlers
-   */
-  ipcMain.handle('auth:start-google-login', async () => {
-    return await startGoogleAuthFlow(mainWindowInstance);
+  // 1. Direct In-App Login Window Trigger (Top-Level Window, NOT webview)
+  ipcMain.handle('auth:start-direct-login', async (_event, options) => {
+    const engine = typeof options === 'string' ? options : (options?.engine || 'gemini');
+    return openDirectLoginWindow(mainWindowInstance, engine);
   });
 
-  ipcMain.handle('auth:google-login', async () => {
-    return await startGoogleAuthFlow(mainWindowInstance);
+  // 2. External Browser Session Relay Trigger
+  ipcMain.handle('auth:open-external-login', async () => {
+    startSessionRelayServer(mainWindowInstance);
+    await shell.openExternal('https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app');
+    return { success: true, relayUrl: 'http://127.0.0.1:49152/callback' };
+  });
+
+  // Legacy Compatibility Mappings
+  ipcMain.handle('auth:google-login', async (_event, options) => {
+    const engine = typeof options === 'string' ? options : (options?.engine || 'gemini');
+    return openDirectLoginWindow(mainWindowInstance, engine);
+  });
+
+  ipcMain.handle('auth:start-google-login', async (_event, options) => {
+    const engine = typeof options === 'string' ? options : (options?.engine || 'gemini');
+    return openDirectLoginWindow(mainWindowInstance, engine);
   });
 
   ipcMain.handle('auth:google-cancel', async () => {
-    return { success: true, message: 'Google authentication canceled.' };
+    if (sessionRelayServer) {
+      try { sessionRelayServer.close(); } catch (_) {}
+      sessionRelayServer = null;
+    }
+    return { success: true };
   });
 
   ipcMain.handle('auth:get-session', async () => {
     return {
       authenticated: true,
-      authMethod: 'Cookie Jar Synchronization',
+      authMethod: 'Direct Window / Browser Relay',
       partition: SHARED_PARTITION,
       user: {
         name: 'Patrick Jay F. Tanap, CPA, CICA',
@@ -500,5 +498,9 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  if (sessionRelayServer) {
+    try { sessionRelayServer.close(); } catch (_) {}
+    sessionRelayServer = null;
+  }
   if (process.platform !== 'darwin') app.quit();
 });

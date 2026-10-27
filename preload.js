@@ -17,12 +17,18 @@ contextBridge.exposeInMainWorld('sentinelDesktop', {
   clearPartition: (partition) => ipcRenderer.invoke('multi-ai:clear-partition', partition),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
 
-  // Google Desktop Cookie Jar Sync APIs
-  startGoogleLogin: () => ipcRenderer.invoke('auth:start-google-login'),
-  googleLogin: (options) => ipcRenderer.invoke('auth:start-google-login', options),
+  // Direct & Browser-Based Session Relay Triggers
+  triggerDirectLogin: (engine) => ipcRenderer.invoke('auth:start-direct-login', engine),
+  openExternalLogin: () => ipcRenderer.invoke('auth:open-external-login'),
+  startGoogleLogin: (options) => ipcRenderer.invoke('auth:start-direct-login', options),
+  googleLogin: (options) => ipcRenderer.invoke('auth:start-direct-login', options),
   googleCancel: () => ipcRenderer.invoke('auth:google-cancel'),
   getGoogleSession: () => ipcRenderer.invoke('auth:get-session'),
   googleLogout: () => ipcRenderer.invoke('auth:google-logout'),
+
+  // Login Success Event Listener
+  onLoginSuccess: (callback) =>
+    ipcRenderer.on('auth:login-success', (_event, data) => callback(data)),
 
   // OAuth WebView Redirect Listener
   onAuthRedirect: (callback) =>

@@ -435,7 +435,7 @@ class GoogleAuthManager {
           id="googleSignInHeaderBtn"
           onclick="window.googleAuth.signIn()"
           class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white hover:bg-gray-50 dark:bg-intel-850 dark:hover:bg-intel-800 text-gray-800 dark:text-white border border-gray-300 dark:border-intel-border text-xs font-semibold shadow-xs transition duration-150 cursor-pointer"
-          title="Sign in with Google via Desktop Loopback Flow (Resolves WebAuthn & Passkey Blocks)"
+          title="Sign in with Google via Seamless Browser Session Relay"
         >
           <!-- Official Google 'G' Multi-Color SVG -->
           <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24">
@@ -446,14 +446,6 @@ class GoogleAuthManager {
           </svg>
           <span class="hidden sm:inline font-bold">Sign in with Google</span>
           <span class="sm:hidden font-bold">Google</span>
-        </button>
-
-        <button
-          onclick="window.googleAuth.openConfigModal()"
-          class="p-1.5 rounded-xl text-gray-500 hover:text-gray-900 dark:text-slate-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-intel-800 transition cursor-pointer"
-          title="Google Cloud Console OAuth 2.0 Desktop Configuration"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
         </button>
       </div>
     `;

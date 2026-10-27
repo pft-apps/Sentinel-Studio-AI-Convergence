@@ -1410,7 +1410,7 @@ class MultiAiHubManager {
             ${ssoHeaderBar}
             <!-- PANE BROWSER TOP NAVIGATION & CONTROLS -->
             <div class="p-2 border-b border-gray-200 dark:border-intel-border bg-gray-50 dark:bg-[#25262b] flex items-center justify-between gap-1.5 shrink-0">
-              <!-- Left: Service Selector & Logo -->
+              <!-- Left: Service Selector & Logo & Direct Sign In Button -->
               <div class="flex items-center gap-1.5 shrink-0">
                 <span class="text-base select-none">${service.icon}</span>
                 <select
@@ -1420,6 +1420,14 @@ class MultiAiHubManager {
                 >
                   ${serviceOptions}
                 </select>
+                <button
+                  type="button"
+                  onclick="if(window.sentinelDesktop && window.sentinelDesktop.triggerDirectLogin) { window.sentinelDesktop.triggerDirectLogin('${pane.serviceId}'); } else if(window.googleAuth) { window.googleAuth.signIn(); }"
+                  class="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1 shadow-2xs shrink-0"
+                  title="Sign In via Seamless Browser Session Relay"
+                >
+                  <span>🔑</span><span class="hidden sm:inline">Sign In</span>
+                </button>
               </div>
 
               <!-- Center: Nav buttons & Address Bar -->

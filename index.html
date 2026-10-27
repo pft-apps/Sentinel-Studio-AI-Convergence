@@ -223,6 +223,24 @@
             }
           });
         }
+
+        if (window.sentinelDesktop && typeof window.sentinelDesktop.onLoginSuccess === 'function') {
+          window.sentinelDesktop.onLoginSuccess((data) => {
+            const gemini = document.getElementById('geminiWebview');
+            if (gemini) gemini.src = 'https://gemini.google.com/app';
+            const chatgpt = document.getElementById('chatgptWebview');
+            if (chatgpt && typeof chatgpt.reload === 'function') chatgpt.reload();
+            const claude = document.getElementById('claudeWebview');
+            if (claude && typeof claude.reload === 'function') claude.reload();
+            const perplexity = document.getElementById('perplexityWebview');
+            if (perplexity && typeof perplexity.reload === 'function') perplexity.reload();
+            const copilot = document.getElementById('copilotWebview');
+            if (copilot && typeof copilot.reload === 'function') copilot.reload();
+            if (window.multiAiHub && typeof window.multiAiHub.renderPanesGrid === 'function') {
+              window.multiAiHub.renderPanesGrid();
+            }
+          });
+        }
       });
     })();
   </script>
@@ -1336,7 +1354,17 @@
     </div>
 
     <div class="flex items-center gap-2.5">
-      <!-- Google Desktop Loopback Authentication Widget -->
+      <!-- Direct Seamless Browser-Based Sign In Button -->
+      <button
+        id="directSignInHeaderBtn"
+        type="button"
+        onclick="if(window.sentinelDesktop && window.sentinelDesktop.triggerDirectLogin) { window.sentinelDesktop.triggerDirectLogin(); } else if(window.googleAuth) { window.googleAuth.signIn(); }"
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition text-xs font-bold shadow-xs cursor-pointer"
+        title="Sign In — Seamless Browser Session Relay"
+      >
+        <span>🔑</span>
+        <span class="hidden sm:inline">Sign In</span>
+      </button>
       <div id="googleAuthHeaderContainer" class="flex items-center"></div>
 
       <!-- Work Desk Header Trigger Button -->
@@ -2234,93 +2262,6 @@
         <div id="inlineAiOptionsContainer" class="w-full"></div>
       </div>
     </aside>
-  </div>
-
-  <!-- GOOGLE CLOUD OAUTH 2.0 CONFIGURATION MODAL (DESKTOP APP LOOPBACK) -->
-  <div id="googleAuthModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-[70] hidden flex items-center justify-center p-4">
-    <div class="bg-white dark:bg-intel-900 border border-gray-300 dark:border-intel-border rounded-2xl w-full max-w-xl p-6 space-y-4 shadow-2xl text-gray-900 dark:text-slate-100">
-      <div class="flex items-center justify-between pb-3 border-b border-gray-200 dark:border-intel-border">
-        <div class="flex items-center gap-2.5">
-          <div class="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-cyan-400 font-bold text-lg">
-            G
-          </div>
-          <div>
-            <h3 class="font-bold text-sm text-gray-900 dark:text-white">Google OAuth 2.0 Desktop Configuration</h3>
-            <p class="text-[11px] text-gray-500 dark:text-slate-400 font-mono">RFC 8252 Loopback &amp; PKCE S256 (127.0.0.1:0)</p>
-          </div>
-        </div>
-        <button onclick="window.googleAuth.closeConfigModal()" class="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white p-1 rounded-lg cursor-pointer">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
-      </div>
-
-      <!-- Concise Step-by-Step Instructions -->
-      <div class="p-3.5 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 text-xs space-y-2">
-        <div class="font-bold text-blue-900 dark:text-cyan-300 flex items-center gap-1.5">
-          <span>📋</span> Google Cloud Console Setup Instructions
-        </div>
-        <ol class="list-decimal list-inside space-y-1 text-gray-700 dark:text-slate-300 text-[11px] leading-relaxed">
-          <li>Visit <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="text-blue-600 dark:text-cyan-400 font-semibold underline">Google Cloud Console &gt; APIs &amp; Services &gt; Credentials</a>.</li>
-          <li>Click <strong>+ Create Credentials</strong> &gt; <strong>OAuth Client ID</strong>.</li>
-          <li>Set <strong>Application type</strong> to <strong class="text-emerald-700 dark:text-emerald-300">Desktop app</strong> (Crucial: Desktop App type automatically permits ephemeral <code>127.0.0.1</code> loopback redirects on any port without manual port whitelisting).</li>
-          <li>Enter a name (e.g., <em>Sentinel Studio Executive Workstation</em>) and click <strong>Create</strong>.</li>
-          <li>Copy your generated <strong>Client ID</strong> and paste below.</li>
-        </ol>
-      </div>
-
-      <div class="space-y-3.5 text-xs">
-        <div>
-          <label class="block font-bold text-gray-800 dark:text-slate-200 mb-1">
-            Google OAuth 2.0 Client ID (Desktop App)
-          </label>
-          <input
-            type="text"
-            id="googleClientIdInput"
-            placeholder="e.g. 123456789-abcdef.apps.googleusercontent.com"
-            class="w-full bg-gray-50 dark:bg-intel-950 border border-gray-300 dark:border-intel-border rounded-xl px-3.5 py-2.5 font-mono text-xs text-gray-900 dark:text-slate-100 placeholder-gray-400 focus:outline-none focus:border-blue-500"
-          />
-        </div>
-
-        <div>
-          <label class="block font-bold text-gray-800 dark:text-slate-200 mb-1">
-            Client Secret <span class="font-normal text-gray-500 dark:text-slate-400">(Optional: PKCE S256 handles secure verification for public desktop clients)</span>
-          </label>
-          <input
-            type="password"
-            id="googleClientSecretInput"
-            placeholder="Optional client secret"
-            class="w-full bg-gray-50 dark:bg-intel-950 border border-gray-300 dark:border-intel-border rounded-xl px-3.5 py-2.5 font-mono text-xs text-gray-900 dark:text-slate-100 placeholder-gray-400 focus:outline-none focus:border-blue-500"
-          />
-        </div>
-      </div>
-
-      <div class="pt-3 border-t border-gray-200 dark:border-intel-border flex items-center justify-between">
-        <button
-          type="button"
-          onclick="window.googleAuth.signIn()"
-          class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-xs cursor-pointer flex items-center gap-1.5"
-        >
-          <span>🚀</span> Test Loopback Sign-In
-        </button>
-
-        <div class="flex items-center gap-2">
-          <button
-            type="button"
-            onclick="window.googleAuth.closeConfigModal()"
-            class="px-3.5 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-intel-850 dark:hover:bg-intel-800 text-gray-700 dark:text-slate-300 font-semibold text-xs transition cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onclick="window.googleAuth.saveConfigFromModal()"
-            class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-xs cursor-pointer"
-          >
-            Save Configuration
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 
   <!-- Gem Creator Modal -->
