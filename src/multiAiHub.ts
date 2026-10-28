@@ -41,6 +41,7 @@ export interface MultiAiStore {
   layout: MultiAiLayout;
   panes: BrowserPane[];
   activePaneId: string | null;
+  selectedAiIds: string[];
   broadcastPrompt: string;
   syncOnSend: boolean;
   autoSubmit: boolean;
@@ -142,6 +143,7 @@ class MultiAiHubManager {
   }
 
   private loadState(): MultiAiStore {
+    const canonical = ['copilot', 'gemini', 'chatgpt', 'claude', 'perplexity', 'custom'];
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
@@ -149,7 +151,6 @@ class MultiAiHubManager {
         if (parsed && Array.isArray(parsed.panes) && parsed.panes.length > 0) {
           const loadedPanes = [...parsed.panes];
           const existingServiceIds = new Set(loadedPanes.map((p: any) => p.serviceId));
-          const canonical = ['copilot', 'gemini', 'chatgpt', 'claude', 'perplexity', 'custom'];
           canonical.forEach((sid) => {
             if (!existingServiceIds.has(sid)) {
               const svc = AI_SERVICES.find((s) => s.id === sid);
@@ -168,13 +169,43 @@ class MultiAiHubManager {
           });
 
           const validLayouts = ['single', 'dual', 'triple', 'quad', 'penta', 'all'];
-          const finalLayout = validLayouts.includes(parsed.layout) ? parsed.layout : 'triple';
+          const finalLayout = (validLayouts.includes(parsed.layout) ? parsed.layout : 'triple') as MultiAiLayout;
+
+          let initialSelected: string[] = [];
+          if (Array.isArray(parsed.selectedAiIds) && parsed.selectedAiIds.length > 0) {
+            initialSelected = parsed.selectedAiIds.filter((id: string) => canonical.includes(id));
+          }
+
+          let targetCount = 3;
+          if (finalLayout === 'single') targetCount = 1;
+          else if (finalLayout === 'dual') targetCount = 2;
+          else if (finalLayout === 'triple') targetCount = 3;
+          else if (finalLayout === 'quad') targetCount = 4;
+          else if (finalLayout === 'penta') targetCount = 5;
+          else if (finalLayout === 'all') targetCount = 6;
+
+          if (finalLayout === 'all') {
+            initialSelected = [...canonical];
+          } else if (initialSelected.length !== targetCount) {
+            const adjusted: string[] = [];
+            for (const id of initialSelected) {
+              if (adjusted.length < targetCount && !adjusted.includes(id)) {
+                adjusted.push(id);
+              }
+            }
+            for (const id of canonical) {
+              if (adjusted.length >= targetCount) break;
+              if (!adjusted.includes(id)) adjusted.push(id);
+            }
+            initialSelected = adjusted;
+          }
 
           return {
             isOpen: !!parsed.isOpen,
-            layout: finalLayout as MultiAiLayout,
+            layout: finalLayout,
             panes: loadedPanes,
             activePaneId: parsed.activePaneId || loadedPanes[0]?.id || null,
+            selectedAiIds: initialSelected,
             broadcastPrompt: parsed.broadcastPrompt || '',
             syncOnSend: parsed.syncOnSend !== false,
             autoSubmit: parsed.autoSubmit !== false,
@@ -186,7 +217,7 @@ class MultiAiHubManager {
       console.warn('[Multi-AI Hub] Error restoring state:', e);
     }
 
-    // Default: All 6 AIs configured and ready (Copilot, Gemini, ChatGPT, Claude, Perplexity, Custom URL)
+    // Default: All 6 AIs configured as dedicated containers
     const defaultPanes: BrowserPane[] = [
       {
         id: 'pane_copilot',
@@ -249,6 +280,7 @@ class MultiAiHubManager {
       layout: 'triple',
       panes: defaultPanes,
       activePaneId: 'pane_copilot',
+      selectedAiIds: ['copilot', 'gemini', 'chatgpt'],
       broadcastPrompt: '',
       syncOnSend: true,
       autoSubmit: true,
@@ -270,6 +302,7 @@ class MultiAiHubManager {
           isMaximized: p.isMaximized,
         })),
         activePaneId: this.state.activePaneId,
+        selectedAiIds: this.state.selectedAiIds,
         broadcastPrompt: this.state.broadcastPrompt,
         syncOnSend: this.state.syncOnSend,
         autoSubmit: this.state.autoSubmit,
@@ -330,6 +363,7 @@ class MultiAiHubManager {
     }
 
     this.render();
+    requestAnimationFrame(() => syncNativeViewBounds());
   }
 
   public close(): void {
@@ -340,6 +374,9 @@ class MultiAiHubManager {
       this.containerEl.classList.add('hidden');
       this.containerEl.classList.remove('flex');
     }
+
+    // Unmount all native views in Electron so standard chat/workdesk is unoccluded
+    (window as any).sentinelDesktop?.syncViewBounds?.({ layout: 'hidden', slots: [] });
 
     // Restore standard chat main viewport
     const mainChat = document.querySelector('main');
@@ -360,126 +397,149 @@ class MultiAiHubManager {
     // Reset maximized state when switching layouts
     this.state.panes.forEach((p) => (p.isMaximized = false));
 
-    const targetCount = layout === 'single' ? 1
-      : layout === 'dual' ? 2
-      : layout === 'triple' ? 3
-      : layout === 'quad' ? 4
-      : layout === 'penta' ? 5
-      : 6;
+    this.ensureDedicatedPanes();
 
-    this.ensurePanesForCount(targetCount);
+    const canonical = ['copilot', 'gemini', 'chatgpt', 'claude', 'perplexity', 'custom'];
+    let targetCount = 3;
+    if (layout === 'single') targetCount = 1;
+    else if (layout === 'dual') targetCount = 2;
+    else if (layout === 'triple') targetCount = 3;
+    else if (layout === 'quad') targetCount = 4;
+    else if (layout === 'penta') targetCount = 5;
+    else if (layout === 'all') targetCount = 6;
+
+    if (layout === 'all') {
+      this.state.selectedAiIds = [...canonical];
+    } else {
+      const current = (this.state.selectedAiIds || []).filter((id) => canonical.includes(id));
+      const adjusted: string[] = [];
+      for (const id of current) {
+        if (adjusted.length < targetCount && !adjusted.includes(id)) {
+          adjusted.push(id);
+        }
+      }
+      for (const id of canonical) {
+        if (adjusted.length >= targetCount) break;
+        if (!adjusted.includes(id)) adjusted.push(id);
+      }
+      this.state.selectedAiIds = adjusted;
+    }
 
     this.saveState();
+    this.renderFocusBar();
     this.renderPanesGrid();
     this.updateLayoutButtons();
+    requestAnimationFrame(() => syncNativeViewBounds());
 
     const layoutLabels: Record<MultiAiLayout, string> = {
-      single: 'Single Focus View',
-      dual: 'Dual Side-by-Side View (2 Columns, 1 Row)',
-      triple: '3-Split View (3 Columns, 1 Row)',
-      quad: '4-Split View (2x2 Grid)',
-      penta: '5-Split View (5 AIs in 3-Column Grid)',
-      all: 'All View (6 AIs in 3-Column Grid: 5 AIs + Custom URL Browser)',
+      single: 'Single Focus View (1 AI)',
+      dual: 'Dual Side-by-Side View (2 AIs)',
+      triple: '3-Split View (3 AIs)',
+      quad: '4-Split View (4 AIs)',
+      penta: '5-Split View (5 AIs)',
+      all: 'All View (All 6 AIs Dedicated Containers)',
     };
     this.showToast(`Switched to ${layoutLabels[layout]}`);
   }
 
-  public ensurePanesForCount(count: number): void {
+  public ensureDedicatedPanes(): void {
     const canonical = ['copilot', 'gemini', 'chatgpt', 'claude', 'perplexity', 'custom'];
-    const existingServiceIds = new Set(this.state.panes.map((p) => p.serviceId));
+    const existing = new Map(this.state.panes.map((p) => [p.serviceId, p]));
 
-    for (let i = 0; i < count; i++) {
-      const sid = canonical[i];
-      if (!existingServiceIds.has(sid)) {
-        const svc = AI_SERVICES.find((s) => s.id === sid);
-        if (svc) {
-          this.state.panes.push({
-            id: `pane_${svc.id}`,
-            serviceId: svc.id,
-            currentUrl: svc.defaultUrl,
-            zoomLevel: 1.0,
-            title: svc.name,
-            isLoading: false,
-            isMaximized: false,
-          });
-          existingServiceIds.add(svc.id);
+    const fullPanes: BrowserPane[] = [];
+    canonical.forEach((sid) => {
+      const existingPane = existing.get(sid);
+      const svc = AI_SERVICES.find((s) => s.id === sid)!;
+      if (existingPane) {
+        existingPane.serviceId = svc.id;
+        existingPane.title = svc.name;
+        if (!existingPane.currentUrl) existingPane.currentUrl = svc.defaultUrl;
+        fullPanes.push(existingPane);
+      } else {
+        fullPanes.push({
+          id: `pane_${svc.id}`,
+          serviceId: svc.id,
+          currentUrl: svc.defaultUrl,
+          zoomLevel: 1.0,
+          title: svc.name,
+          isLoading: false,
+          isMaximized: false,
+        });
+      }
+    });
+
+    this.state.panes = fullPanes;
+  }
+
+  public toggleFocusAi(serviceId: string): void {
+    const canonical = ['copilot', 'gemini', 'chatgpt', 'claude', 'perplexity', 'custom'];
+    if (!canonical.includes(serviceId)) return;
+
+    const layout = this.state.layout;
+    if (layout === 'all') {
+      this.state.selectedAiIds = [...canonical];
+      this.showToast('All 6 dedicated AI containers are displayed in All view.');
+      this.renderFocusBar();
+      return;
+    }
+
+    let targetCount = 3;
+    if (layout === 'single') targetCount = 1;
+    else if (layout === 'dual') targetCount = 2;
+    else if (layout === 'triple') targetCount = 3;
+    else if (layout === 'quad') targetCount = 4;
+    else if (layout === 'penta') targetCount = 5;
+
+    let selected = [...(this.state.selectedAiIds || [])];
+
+    if (layout === 'single') {
+      selected = [serviceId];
+    } else {
+      if (selected.includes(serviceId)) {
+        if (selected.length > 1) {
+          selected = selected.filter((id) => id !== serviceId);
+        } else {
+          this.showToast('At least one AI container must remain active.');
+          return;
+        }
+      } else {
+        if (selected.length < targetCount) {
+          selected.push(serviceId);
+        } else {
+          // FIFO shift: replace oldest selected
+          selected.shift();
+          selected.push(serviceId);
         }
       }
     }
+
+    this.state.selectedAiIds = selected;
+    this.saveState();
+    this.renderFocusBar();
+    this.renderPanesGrid();
+    requestAnimationFrame(() => syncNativeViewBounds());
+
+    const names = selected.map((id) => AI_SERVICES.find((s) => s.id === id)?.shortName || id).join(' + ');
+    this.showToast(`Focus AI Active: ${names}`);
   }
 
   public switchSingleFocus(serviceId: string): void {
-    const found = this.state.panes.find((p) => p.serviceId === serviceId);
-    if (found) {
-      this.state.activePaneId = found.id;
-    } else {
-      const svc = AI_SERVICES.find((s) => s.id === serviceId);
-      if (svc && this.state.panes.length > 0) {
-        this.state.panes[0].serviceId = svc.id;
-        this.state.panes[0].currentUrl = svc.defaultUrl;
-        this.state.panes[0].title = svc.name;
-        this.state.activePaneId = this.state.panes[0].id;
-      }
-    }
-    this.saveState();
-    this.renderPanesGrid();
-    const svc = AI_SERVICES.find((s) => s.id === serviceId);
-    if (svc) this.showToast(`Switched focus to ${svc.name}`);
+    this.toggleFocusAi(serviceId);
   }
 
   public addPane(serviceId: string = 'copilot'): void {
-    const service = AI_SERVICES.find((s) => s.id === serviceId) || AI_SERVICES[0];
-    const newId = `pane_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const newPane: BrowserPane = {
-      id: newId,
-      serviceId: service.id,
-      currentUrl: service.defaultUrl,
-      zoomLevel: 1.0,
-      title: service.name,
-      isLoading: false,
-      isMaximized: false,
-    };
-    this.state.panes.push(newPane);
-    this.state.activePaneId = newId;
-    this.saveState();
-    this.renderPanesGrid();
-    this.showToast(`Added ${service.name} Browser Pane`);
+    this.toggleFocusAi(serviceId);
   }
 
   public removePane(paneId: string): void {
-    if (this.state.panes.length <= 1) {
-      this.showToast('At least one browser pane must remain active.');
-      return;
+    const pane = this.state.panes.find((p) => p.id === paneId);
+    if (pane) {
+      this.toggleFocusAi(pane.serviceId);
     }
-    this.state.panes = this.state.panes.filter((p) => p.id !== paneId);
-    if (this.state.activePaneId === paneId) {
-      this.state.activePaneId = this.state.panes[0]?.id || null;
-    }
-    this.saveState();
-    this.renderPanesGrid();
   }
 
-  public setPaneService(paneId: string, serviceId: string): void {
-    const pane = this.state.panes.find((p) => p.id === paneId);
-    const service = AI_SERVICES.find((s) => s.id === serviceId);
-    if (!pane || !service) return;
-
-    pane.serviceId = service.id;
-    pane.currentUrl = service.defaultUrl;
-    pane.title = service.name;
-    this.saveState();
-
-    const frameEl = (document.getElementById(`${pane.serviceId}Webview`) || document.getElementById(`browser_frame_${paneId}`)) as any;
-    if (frameEl) {
-      frameEl.src = service.defaultUrl;
-    }
-
-    const urlInput = document.getElementById(`url_input_${paneId}`) as HTMLInputElement | null;
-    if (urlInput) {
-      urlInput.value = service.defaultUrl;
-    }
-
-    this.showToast(`Switched pane to ${service.name}`);
+  public setPaneService(_paneId: string, serviceId: string): void {
+    this.toggleFocusAi(serviceId);
   }
 
   public navigatePane(paneId: string, url: string): void {
@@ -946,47 +1006,106 @@ class MultiAiHubManager {
     }, 3200);
   }
 
+  private renderFocusBar(): void {
+    const barEl = document.getElementById('multiAiFocusBar');
+    if (!barEl) return;
+
+    const layout = this.state.layout;
+    const selected = this.state.selectedAiIds || [];
+
+    let targetCount = 3;
+    let label = '';
+    if (layout === 'single') {
+      targetCount = 1;
+      label = `Single View (Pick 1 Focus AI)`;
+    } else if (layout === 'dual') {
+      targetCount = 2;
+      label = `Dual View (Pick 2 Focus AIs: ${selected.length}/2)`;
+    } else if (layout === 'triple') {
+      targetCount = 3;
+      label = `3-Split View (Pick 3 Focus AIs: ${selected.length}/3)`;
+    } else if (layout === 'quad') {
+      targetCount = 4;
+      label = `4-Split View (Pick 4 Focus AIs: ${selected.length}/4)`;
+    } else if (layout === 'penta') {
+      targetCount = 5;
+      label = `5-Split View (Pick 5 Focus AIs: ${selected.length}/5)`;
+    } else if (layout === 'all') {
+      targetCount = 6;
+      label = `All View (All 6 AIs Active)`;
+    }
+
+    barEl.innerHTML = `
+      <div class="flex items-center gap-2 shrink-0">
+        <div class="flex items-center gap-1.5">
+          <span class="text-sm">🎯</span>
+          <span class="text-xs font-black uppercase tracking-wider text-purple-700 dark:text-purple-300">Focus AI:</span>
+        </div>
+        <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/80 text-purple-800 dark:text-purple-300 font-mono font-bold border border-purple-200 dark:border-purple-800/60 shadow-2xs shrink-0">
+          ${label}
+        </span>
+      </div>
+
+      <div class="flex items-center gap-1.5 overflow-x-auto py-0.5">
+        ${AI_SERVICES.map((s) => {
+          const isSelected = selected.includes(s.id);
+          const slotNum = isSelected ? selected.indexOf(s.id) + 1 : null;
+          return `
+            <button
+              type="button"
+              onclick="window.multiAiHub.toggleFocusAi('${s.id}')"
+              class="px-2.5 py-1 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                isSelected
+                  ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white border-purple-500 shadow-xs ring-1 ring-purple-400'
+                  : 'bg-white dark:bg-intel-850 text-gray-700 dark:text-slate-300 border-gray-300 dark:border-intel-border hover:bg-gray-100 dark:hover:bg-intel-800 hover:text-gray-950 dark:hover:text-white'
+              }"
+              title="${
+                layout === 'all'
+                  ? `${s.name} is active in All view`
+                  : isSelected
+                  ? `Active in Slot ${slotNum}. Click to toggle or replace.`
+                  : `Activate dedicated ${s.name} container`
+              }"
+            >
+              <span class="text-xs">${s.icon}</span>
+              <span>${s.shortName}</span>
+              ${
+                isSelected
+                  ? `<span class="w-4 h-4 rounded-full bg-white/25 text-white text-[9px] flex items-center justify-center font-bold font-mono">${slotNum ?? '✓'}</span>`
+                  : ''
+              }
+            </button>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
   private render(): void {
     if (!this.containerEl) return;
 
     this.containerEl.innerHTML = `
       <!-- MULTI-AI WORKSPACE HEADER & CONTROL BAR -->
-      <div class="h-13 px-4 border-b border-intel-border bg-white dark:bg-[#1f2023] flex items-center justify-between gap-3 shrink-0 shadow-2xs z-20">
-        <!-- Left: Branding & Multi-AI Badges -->
-        <div class="flex items-center gap-3">
+      <div id="multiAiHeaderBar" class="h-13 px-4 border-b border-intel-border bg-white dark:bg-[#1f2023] flex items-center justify-between gap-3 shrink-0 shadow-2xs z-20 overflow-x-auto scrollbar-thin">
+        <!-- Left: Branding -->
+        <div class="flex items-center gap-3 shrink-0">
           <div class="flex items-center gap-2">
             <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 via-indigo-600 to-blue-600 flex items-center justify-center text-white text-base shadow-sm">
               🌐
             </div>
             <div>
               <div class="flex items-center gap-2">
-                <h2 class="text-xs font-black tracking-tight text-gray-900 dark:text-white uppercase flex items-center gap-1.5">
+                <h2 class="text-xs font-black tracking-tight text-gray-900 dark:text-white uppercase flex items-center gap-1.5 whitespace-nowrap">
                   <span>Multi-AI Hub</span>
                   <span class="text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border border-purple-300 dark:border-purple-800 font-mono font-bold lowercase">v2.5 convergence</span>
                 </h2>
               </div>
-              <p class="text-[10px] text-gray-600 dark:text-slate-400 hidden sm:block">
-                Synchronized Multi-Browser Station for Microsoft Copilot, Google Gemini, and OpenAI ChatGPT Subscriptions
-              </p>
             </div>
-          </div>
-
-          <!-- Service Fast Status Badges -->
-          <div class="hidden md:flex items-center gap-1.5 ml-2 border-l border-gray-200 dark:border-intel-border pl-3">
-            <span class="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 font-semibold flex items-center gap-1">
-              <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span> Copilot
-            </span>
-            <span class="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 font-semibold flex items-center gap-1">
-              <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Gemini
-            </span>
-            <span class="text-[10px] px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 font-semibold flex items-center gap-1">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> ChatGPT
-            </span>
           </div>
         </div>
 
         <!-- Center: Layout Selectors (1. Single, 2. Dual, 3. 3-Split, 4. 4-Split, 5. 5-Split, 6. All) -->
-        <div class="flex items-center bg-gray-100 dark:bg-intel-850 p-0.5 rounded-xl border border-gray-200 dark:border-intel-border text-xs shrink-0 shadow-inner overflow-x-auto max-w-[58vw]">
+        <div class="flex items-center bg-gray-100 dark:bg-intel-850 p-0.5 rounded-xl border border-gray-200 dark:border-intel-border text-xs shrink-0 shadow-inner overflow-x-auto max-w-[58vw] scrollbar-thin">
           <button id="multiAiLayoutSingleBtn" type="button" class="px-2 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0 ${this.state.layout === 'single' ? 'bg-purple-600 text-white shadow-xs' : 'text-gray-700 dark:text-slate-300 hover:text-gray-950 dark:hover:text-white'}" title="1. Single AI Focus View">
             <span>🔲</span>
             <span class="text-[11px]">Single</span>
@@ -1013,27 +1132,19 @@ class MultiAiHubManager {
           </button>
         </div>
 
-        <!-- Right: Actions (+ Pane, Capture Chat, Session Cookie Guide, Close / Back to Local) -->
+        <!-- Right: Actions (AI Conference, Session Cookie Guide, Close / Back to Local) -->
         <div class="flex items-center gap-2">
-          <!-- Capture Chat Button -->
+          <!-- AI Conference Button -->
           <button
-            id="multiAiHeaderCaptureBtn"
+            id="multiAiHeaderConferenceBtn"
             type="button"
-            onclick="window.multiAiHub.captureActiveAiChats()"
-            class="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
-            title="Capture chats from all active visible AIs and save to Sentinel Session History"
+            onclick="if(window.openConferenceModal) window.openConferenceModal(); else if(window.aiConference) window.aiConference.open();"
+            class="px-2.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
+            title="Open AI-to-AI Conference & 5-Speaker Brainstorming Room"
           >
-            <span>💾</span>
-            <span class="hidden sm:inline">Capture Chat</span>
+            <span>🤝</span>
+            <span class="hidden sm:inline">AI Conference</span>
           </button>
-
-          <!-- Add Browser Pane Button -->
-          <div class="relative group">
-            <button id="multiAiAddPaneBtn" type="button" class="px-2.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 transition cursor-pointer" title="Add another AI browser pane">
-              <span>+</span>
-              <span class="hidden sm:inline">Add Browser</span>
-            </button>
-          </div>
 
           <!-- Subscription Login Help Pill -->
           <button id="multiAiLoginHelpBtn" type="button" class="p-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-intel-850 dark:hover:bg-intel-800 text-gray-700 dark:text-slate-300 border border-gray-200 dark:border-intel-border transition cursor-pointer" title="Subscription Login & Cookie Guide">
@@ -1048,9 +1159,14 @@ class MultiAiHubManager {
         </div>
       </div>
 
+      <!-- FOCUS AI SELECTOR TOOLBAR -->
+      <div id="multiAiFocusBar" class="px-4 py-2 bg-gradient-to-r from-purple-50/90 via-indigo-50/70 to-blue-50/90 dark:from-[#17181c] dark:via-[#1a1b20] dark:to-[#17181c] border-b border-gray-200 dark:border-intel-border flex items-center justify-between gap-3 shrink-0 select-none overflow-x-auto scrollbar-thin shadow-2xs z-10">
+        <!-- Dynamically rendered by renderFocusBar() -->
+      </div>
+
       <!-- MAIN PANES VIEWPORT -->
       <div id="multiAiPanesViewport" class="flex-1 overflow-hidden p-2 sm:p-3 bg-gray-100 dark:bg-[#121316] relative flex flex-col">
-        <div id="multiAiPanesGrid" class="flex-1 grid gap-2.5 sm:gap-3.5 h-full overflow-hidden transition-all duration-200">
+        <div id="multiAiPanelsGrid" data-alias="multiAiPanesGrid" class="flex-1 grid gap-2.5 sm:gap-3.5 h-full overflow-hidden transition-all duration-200">
           <!-- Rendered dynamically by renderPanesGrid() -->
         </div>
       </div>
@@ -1059,7 +1175,7 @@ class MultiAiHubManager {
       <div class="border-t border-intel-border bg-white dark:bg-[#1f2023] p-3 shrink-0 shadow-lg z-20">
         <div class="max-w-6xl mx-auto flex flex-col gap-2">
           <!-- Quick Preset Prompts Bar -->
-          <div class="flex items-center justify-between gap-2 overflow-x-auto text-xs pb-0.5">
+          <div class="flex items-center justify-between gap-2 overflow-x-auto scrollbar-thin text-xs pb-0.5">
             <div class="flex items-center gap-1.5 shrink-0">
               <span class="text-[10px] font-extrabold text-purple-600 dark:text-purple-400 uppercase tracking-wider flex items-center gap-1 shrink-0">
                 <span>⚡</span> Prompt Sync:
@@ -1087,12 +1203,13 @@ class MultiAiHubManager {
             <div class="flex-1 bg-gray-50 dark:bg-[#121316] border border-gray-300 dark:border-intel-border rounded-2xl p-2.5 focus-within:border-purple-500 focus-within:ring-1 focus-within:ring-purple-500 transition shadow-inner">
               <textarea
                 id="multiAiBroadcastInput"
+                name="bottomPromptInput"
+                data-alias="bottomPromptInput"
                 rows="2"
-                placeholder="Type your prompt here once to broadcast or paste across Microsoft Copilot, Google Gemini, and OpenAI ChatGPT..."
+                placeholder="Type your prompt here once to broadcast across your active focus AIs..."
                 class="w-full bg-transparent text-gray-900 dark:text-slate-100 text-xs focus:outline-none resize-none leading-relaxed"
               >${this.state.broadcastPrompt}</textarea>
             </div>
-
             <div class="flex items-center gap-1.5 shrink-0 flex-wrap">
               <button
                 id="multiAiAutoSubmitToggleBtn"
@@ -1107,25 +1224,24 @@ class MultiAiHubManager {
                 <span>${this.state.autoSubmit ? '🟢' : '⚪'}</span>
                 <span>Auto-Send: ${this.state.autoSubmit ? 'ON' : 'OFF'}</span>
               </button>
-
               <button
                 id="multiAiBroadcastSendBtn"
                 type="button"
+                onclick="if(window.handleBroadcast) window.handleBroadcast(); else window.multiAiHub.broadcastPrompt();"
                 class="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
                 title="Broadcast prompt to all active AI browser panes"
               >
                 <span class="text-sm">⚡</span>
-                <span>Broadcast to All</span>
+                <span>Broadcast to Active</span>
               </button>
-
               <button
                 id="multiAiDockCaptureBtn"
                 type="button"
-                onclick="window.multiAiHub.captureActiveAiChats()"
+                onclick="if(window.handleCaptureChat) window.handleCaptureChat(); else window.multiAiHub.captureActiveAiChats();"
                 class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md flex items-center justify-center gap-1.5 transition cursor-pointer"
                 title="Capture chats from all active visible AIs and save to Sentinel Session History"
               >
-                <span>💾</span>
+                <span>📥</span>
                 <span>Capture Chat</span>
               </button>
 
@@ -1191,69 +1307,61 @@ class MultiAiHubManager {
       </div>
     `;
 
+    this.renderFocusBar();
     this.renderPanesGrid();
     this.updateLayoutButtons();
     this.attachDomHandlers();
   }
 
   private renderPanesGrid(): void {
-    const gridEl = document.getElementById('multiAiPanesGrid');
+    const gridEl = document.getElementById('multiAiPanelsGrid') || document.getElementById('multiAiPanesGrid');
     if (!gridEl) return;
+
+    this.ensureDedicatedPanes();
 
     // Apply CSS layout classes
     const layout = this.state.layout;
     gridEl.className = 'flex-1 grid gap-2 sm:gap-3 h-full overflow-hidden transition-all duration-200';
-
     if (this.state.panes.some((p) => p.isMaximized)) {
       gridEl.classList.add('grid-cols-1', 'grid-rows-1');
     } else if (layout === 'single') {
-      // 1. Single (1 Focus AI)
       gridEl.classList.add('grid-cols-1', 'grid-rows-1');
     } else if (layout === 'dual') {
-      // 2. Dual (side by side: 2 columns, 1 row)
       gridEl.classList.add('grid-cols-1', 'md:grid-cols-2', 'grid-rows-1');
     } else if (layout === 'triple') {
-      // 3. 3-Split (strictly 3 columns, 1 row)
       gridEl.classList.add('grid-cols-1', 'md:grid-cols-3', 'grid-rows-1');
     } else if (layout === 'quad') {
-      // 4. 4-Split (2x2 grid)
       gridEl.classList.add('grid-cols-1', 'md:grid-cols-2', 'grid-rows-2');
     } else if (layout === 'penta') {
-      // 5. 5-Split (5 AIs in a 3-column grid)
       gridEl.classList.add('grid-cols-1', 'md:grid-cols-3', 'grid-rows-2');
     } else if (layout === 'all') {
-      // 6. All (6 AIs in a 3x2 grid: 5 AIs + Custom URL browser)
       gridEl.classList.add('grid-cols-1', 'md:grid-cols-3', 'grid-rows-2');
     }
 
     const isDesktop = typeof (window as any).sentinelDesktop !== 'undefined' && !!(window as any).sentinelDesktop.isDesktop;
 
-    let targetCount = 3;
-    if (layout === 'single') targetCount = 1;
-    else if (layout === 'dual') targetCount = 2;
-    else if (layout === 'triple') targetCount = 3;
-    else if (layout === 'quad') targetCount = 4;
-    else if (layout === 'penta') targetCount = 5;
-    else if (layout === 'all') targetCount = 6;
+    const canonical = ['copilot', 'gemini', 'chatgpt', 'claude', 'perplexity', 'custom'];
+    let selectedIds = (this.state.selectedAiIds || []).filter((id) => canonical.includes(id));
+    if (selectedIds.length === 0) {
+      selectedIds = ['copilot', 'gemini', 'chatgpt'];
+    }
 
     let visiblePanes: BrowserPane[] = [];
     if (this.state.panes.some((p) => p.isMaximized)) {
       visiblePanes = this.state.panes.filter((p) => p.isMaximized);
-    } else if (layout === 'single') {
-      const active = this.state.panes.find((p) => p.id === this.state.activePaneId);
-      visiblePanes = active ? [active] : this.state.panes.slice(0, 1);
     } else {
-      visiblePanes = this.state.panes.slice(0, targetCount);
+      visiblePanes = selectedIds
+        .map((sid) => this.state.panes.find((p) => p.serviceId === sid))
+        .filter((p): p is BrowserPane => !!p);
+    }
+
+    if (visiblePanes.length === 0 && this.state.panes.length > 0) {
+      visiblePanes = [this.state.panes[0]];
     }
 
     gridEl.innerHTML = visiblePanes
       .map((pane) => {
         const service = AI_SERVICES.find((s) => s.id === pane.serviceId) || AI_SERVICES[0];
-
-        // Service dropdown options
-        const serviceOptions = AI_SERVICES.map(
-          (s) => `<option value="${s.id}" ${s.id === pane.serviceId ? 'selected' : ''}>${s.icon} ${s.shortName}</option>`
-        ).join('');
 
         // Active Google Session Details
         const googleState = googleAuth.getState();
@@ -1262,7 +1370,6 @@ class MultiAiHubManager {
 
         // Custom SSO / Account Header Bar for Google-connected services (Gemini, ChatGPT)
         let ssoHeaderBar = '';
-
         if (pane.serviceId === 'gemini') {
           if (isGoogleAuth && googleUser) {
             ssoHeaderBar = `
@@ -1340,19 +1447,38 @@ class MultiAiHubManager {
           }
         }
 
-        // Embedded Live Browser Frame for all services
+        // Native WebContentsView Placeholder Slot in Desktop, Iframe Fallback in Web Preview
         let browserElement = '';
         if (isDesktop) {
           browserElement = `
-            <webview
-              id="${pane.serviceId}Webview"
-              src="${pane.currentUrl}"
-              partition="persist:sentinel_ai_workspace"
-              useragent="${CHROME_UA}"
-              allowpopups="true"
-              webpreferences="contextIsolation=yes"
-              class="w-full h-full border-0 bg-white"
-            ></webview>
+            <div class="flex-1 w-full h-full relative overflow-hidden bg-[#06234D]/20">
+              <div id="slot_${pane.serviceId}" class="w-full h-full native-view-slot bg-[#06234D]/20 flex flex-col items-center justify-center p-4 text-center select-none">
+                <div class="w-12 h-12 rounded-2xl bg-[#0B254E] border border-[#00C4E7]/40 flex items-center justify-center text-2xl shadow-lg mb-2">
+                  ${service.icon}
+                </div>
+                <h3 class="text-sm font-bold text-white mb-0.5">${service.name}</h3>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-[#00C4E7]/15 text-[#00C4E7] font-mono font-bold border border-[#00C4E7]/30 mb-2">
+                  ${service.badge}
+                </span>
+                <p class="text-[11px] text-slate-300 max-w-xs leading-relaxed">
+                  Dedicated Chromium WebContentsView connected. Zero-403 useragent spoofing with shared partition.
+                </p>
+                <div class="mt-3 flex items-center gap-2">
+                  <button
+                    onclick="if(window.sentinelDesktop?.reloadView) window.sentinelDesktop.reloadView('${pane.serviceId}'); else window.multiAiHub.reloadPane('${pane.id}');"
+                    class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1 shadow-xs"
+                  >
+                    <span>🔄</span> Reload View
+                  </button>
+                  <button
+                    onclick="window.multiAiHub.openCompanion('${pane.id}')"
+                    class="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1 shadow-xs"
+                  >
+                    <span>↗</span> Popout
+                  </button>
+                </div>
+              </div>
+            </div>
           `;
         } else {
           // Web preview mode: resilient iframe with live companion helper
@@ -1369,7 +1495,7 @@ class MultiAiHubManager {
               <div class="px-3 py-1.5 bg-gray-50 dark:bg-intel-900 border-t border-gray-200 dark:border-intel-border text-[11px] flex items-center justify-between text-gray-700 dark:text-slate-300">
                 <span class="flex items-center gap-1.5 truncate">
                   <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  <span class="font-semibold">${service.name} Live Session</span>
+                  <span class="font-semibold">${service.name} Dedicated Session</span>
                   ${isGoogleAuth && (pane.serviceId === 'gemini' || pane.serviceId === 'chatgpt') ? `<span class="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono font-bold">(${googleUser?.email})</span>` : ''}
                 </span>
                 <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="px-2 py-0.5 rounded bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1">
@@ -1380,46 +1506,22 @@ class MultiAiHubManager {
           `;
         }
 
-        const singleFocusBar = layout === 'single' ? `
-          <div class="px-3 py-1.5 bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 dark:from-purple-950/60 dark:via-indigo-950/60 dark:to-blue-950/60 border-b border-purple-200 dark:border-purple-900/50 flex items-center gap-1.5 overflow-x-auto text-xs shrink-0 select-none">
-            <span class="text-[10px] font-extrabold uppercase tracking-wider text-purple-700 dark:text-purple-300 mr-1 flex items-center gap-1 shrink-0">
-              <span>🎯</span> Focus AI:
-            </span>
-            ${AI_SERVICES.map((s) => `
-              <button
-                onclick="window.multiAiHub.switchSingleFocus('${s.id}')"
-                class="px-2.5 py-1 rounded-lg text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                  pane.serviceId === s.id
-                    ? 'bg-purple-600 text-white border-purple-500 shadow-xs'
-                    : 'bg-white dark:bg-intel-850 text-gray-700 dark:text-slate-300 border-gray-300 dark:border-intel-border hover:bg-gray-100 dark:hover:bg-intel-800'
-                }"
-              >
-                <span>${s.icon}</span>
-                <span>${s.shortName}</span>
-              </button>
-            `).join('')}
-          </div>
-        ` : '';
-
         return `
           <div
             id="pane_container_${pane.id}"
-            class="flex flex-col bg-white dark:bg-[#1e1f23] border border-gray-300 dark:border-intel-border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow relative min-w-0 min-h-0"
+            data-engine="${pane.serviceId}"
+            class="native-view-column flex flex-col bg-white dark:bg-[#1e1f23] border border-gray-300 dark:border-intel-border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow relative min-w-0 min-h-0 h-full"
           >
-            ${singleFocusBar}
             ${ssoHeaderBar}
-            <!-- PANE BROWSER TOP NAVIGATION & CONTROLS -->
+            <!-- DEDICATED PANE BROWSER TOP NAVIGATION & CONTROLS (NO DROPDOWN) -->
             <div class="p-2 border-b border-gray-200 dark:border-intel-border bg-gray-50 dark:bg-[#25262b] flex items-center justify-between gap-1.5 shrink-0">
-              <!-- Left: Service Selector & Logo & Direct Sign In Button -->
-              <div class="flex items-center gap-1.5 shrink-0">
+              <!-- Left: Dedicated AI Branding & Direct Sign In Button -->
+              <div class="flex items-center gap-2 shrink-0">
                 <span class="text-base select-none">${service.icon}</span>
-                <select
-                  onchange="window.multiAiHub.setPaneService('${pane.id}', this.value)"
-                  class="bg-white dark:bg-intel-850 border border-gray-300 dark:border-intel-border text-gray-900 dark:text-slate-100 text-[11px] font-bold rounded-lg px-2 py-1 focus:outline-none focus:border-purple-500 cursor-pointer"
-                  title="Switch AI Subscription"
-                >
-                  ${serviceOptions}
-                </select>
+                <span class="font-extrabold text-xs text-gray-900 dark:text-white truncate">${service.name}</span>
+                <span class="hidden sm:inline-block text-[9px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50 font-mono font-bold shrink-0">
+                  ${service.badge}
+                </span>
                 <button
                   type="button"
                   onclick="if(window.sentinelDesktop && window.sentinelDesktop.triggerDirectLogin) { window.sentinelDesktop.triggerDirectLogin('${pane.serviceId}'); } else if(window.googleAuth) { window.googleAuth.signIn(); }"
@@ -1449,7 +1551,7 @@ class MultiAiHubManager {
                 />
               </div>
 
-              <!-- Right: Zoom, Popout, Maximize, Remove -->
+              <!-- Right: Zoom, Popout, Maximize -->
               <div class="flex items-center gap-1 shrink-0">
                 <!-- Zoom Controls -->
                 <div class="hidden sm:flex items-center bg-gray-200/70 dark:bg-intel-850 rounded-lg p-0.5 border border-gray-300 dark:border-intel-border text-[10px]">
@@ -1467,17 +1569,6 @@ class MultiAiHubManager {
                 <button onclick="window.multiAiHub.toggleMaximize('${pane.id}')" class="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-intel-800 text-gray-600 dark:text-slate-300 transition cursor-pointer" title="${pane.isMaximized ? 'Restore View' : 'Maximize Pane'}">
                   ${pane.isMaximized ? '🗗' : '⛶'}
                 </button>
-
-                <!-- Remove Pane (if more than 1 pane) -->
-                ${
-                  this.state.panes.length > 1
-                    ? `
-                  <button onclick="window.multiAiHub.removePane('${pane.id}')" class="p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-950/60 text-gray-400 hover:text-red-600 transition cursor-pointer" title="Close this Pane">
-                    ✕
-                  </button>
-                `
-                    : ''
-                }
               </div>
             </div>
 
@@ -1489,6 +1580,8 @@ class MultiAiHubManager {
         `;
       })
       .join('');
+
+    requestAnimationFrame(() => syncNativeViewBounds());
   }
 
   private updateLayoutButtons(): void {
@@ -1606,13 +1699,101 @@ class MultiAiHubManager {
       toggleBtn.onclick = () => this.toggle();
     }
 
-    // Wire up sidebar toggle button if present
-    const sidebarBtn = document.getElementById('sidebarMultiAiBtn');
-    if (sidebarBtn) {
-      sidebarBtn.onclick = () => this.toggle();
+    // Continuous dynamic slot tracking
+    window.addEventListener('resize', syncNativeViewBounds);
+    const gridEl = document.getElementById('multiAiPanelsGrid') || document.getElementById('multiAiPanesGrid');
+    if (gridEl) {
+      const resizeObserver = new ResizeObserver(() => syncNativeViewBounds());
+      resizeObserver.observe(gridEl);
     }
   }
 }
+
+/**
+ * Continuous Dynamic Slot Tracking for Electron WebContentsViews
+ * Calculates bounding box coordinates of each visible slot container
+ */
+export function syncNativeViewBounds(): void {
+  if (typeof window === 'undefined') return;
+  const desktop = (window as any).sentinelDesktop;
+  if (!desktop || typeof desktop.syncViewBounds !== 'function') return;
+
+  const hubContainer = document.getElementById('multiAiHubContainer');
+  if (!hubContainer || hubContainer.classList.contains('hidden')) {
+    desktop.syncViewBounds({ layout: 'hidden', slots: [] });
+    return;
+  }
+
+  const visibleSlots: Array<{ engineKey: string; bounds: { x: number; y: number; width: number; height: number } }> = [];
+  const activeSlotElements = document.querySelectorAll<HTMLElement>('.native-view-column:not(.hidden)');
+
+  activeSlotElements.forEach((col) => {
+    const engineKey = col.getAttribute('data-engine');
+    const slotEl = col.querySelector<HTMLElement>('.native-view-slot');
+    if (slotEl && engineKey) {
+      const rect = slotEl.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        visibleSlots.push({
+          engineKey,
+          bounds: {
+            x: rect.left,
+            y: rect.top,
+            width: rect.width,
+            height: rect.height,
+          },
+        });
+      }
+    }
+  });
+
+  const activeSplitMode = (window as any).multiAiHub?.state?.layout || '3-split';
+  desktop.syncViewBounds({
+    layout: activeSplitMode,
+    slots: visibleSlots,
+  });
+}
+
+(window as any).syncNativeViewBounds = syncNativeViewBounds;
+
+// Wiring Feature 1: Broadcast to All Active AIs
+(window as any).handleBroadcast = async function () {
+  const input = (document.getElementById('bottomPromptInput') ||
+    document.getElementById('multiAiBroadcastInput')) as HTMLTextAreaElement | HTMLInputElement | null;
+  const text = input ? input.value.trim() : '';
+  if (!text || !input) return;
+
+  if ((window as any).sentinelDesktop?.broadcastPrompt) {
+    await (window as any).sentinelDesktop.broadcastPrompt(text);
+    input.value = '';
+    (window as any).multiAiHub?.showToast?.(`⚡ Broadcast sent to all active AI WebContentsViews!`);
+  } else if ((window as any).multiAiHub) {
+    (window as any).multiAiHub.broadcastPrompt();
+  }
+};
+
+// Wiring Feature 2: Local Session History Capture & Dropdown Filter
+(window as any).handleCaptureChat = async function () {
+  if ((window as any).sentinelDesktop?.captureChat) {
+    const captured = await (window as any).sentinelDesktop.captureChat('all');
+    for (const item of captured) {
+      if (typeof (window as any).saveChatToHistory === 'function') {
+        (window as any).saveChatToHistory({
+          id: 'chat_' + Date.now() + '_' + item.engine,
+          aiSource: item.engine,
+          timestamp: item.timestamp,
+          prompt: item.prompt,
+          response: item.response,
+        });
+      }
+    }
+    if (typeof (window as any).renderSessionHistoryList === 'function') {
+      (window as any).renderSessionHistoryList();
+    }
+    (window as any).multiAiHub?.showToast?.(`💾 Captured ${captured.length} active AI chats to Session History!`);
+  } else if ((window as any).multiAiHub) {
+    (window as any).multiAiHub.captureActiveAiChats();
+  }
+};
 
 // Global instance handle
 let globalMultiAiHub: MultiAiHubManager | null = null;

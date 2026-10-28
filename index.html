@@ -215,9 +215,8 @@
         if (window.sentinelDesktop && typeof window.sentinelDesktop.onAuthRedirect === 'function') {
           window.sentinelDesktop.onAuthRedirect((data) => {
             if (!data) return;
-            const wv = document.getElementById(`${data.engine}Webview`);
-            if (wv) {
-              wv.src = data.url;
+            if (data.engine && window.sentinelDesktop?.navigateView) {
+              window.sentinelDesktop.navigateView(data.engine, data.url);
             } else if (data.engine && window.multiAiHub && typeof window.multiAiHub.navigatePane === 'function') {
               window.multiAiHub.navigatePane(`pane_${data.engine}`, data.url);
             }
@@ -226,16 +225,14 @@
 
         if (window.sentinelDesktop && typeof window.sentinelDesktop.onLoginSuccess === 'function') {
           window.sentinelDesktop.onLoginSuccess((data) => {
-            const gemini = document.getElementById('geminiWebview');
-            if (gemini) gemini.src = 'https://gemini.google.com/app';
-            const chatgpt = document.getElementById('chatgptWebview');
-            if (chatgpt && typeof chatgpt.reload === 'function') chatgpt.reload();
-            const claude = document.getElementById('claudeWebview');
-            if (claude && typeof claude.reload === 'function') claude.reload();
-            const perplexity = document.getElementById('perplexityWebview');
-            if (perplexity && typeof perplexity.reload === 'function') perplexity.reload();
-            const copilot = document.getElementById('copilotWebview');
-            if (copilot && typeof copilot.reload === 'function') copilot.reload();
+            const engine = data?.engine || 'all';
+            if (engine === 'all') {
+              ['gemini', 'chatgpt', 'copilot', 'claude', 'perplexity'].forEach((e) => {
+                if (window.sentinelDesktop?.reloadView) window.sentinelDesktop.reloadView(e);
+              });
+            } else if (window.sentinelDesktop?.reloadView) {
+              window.sentinelDesktop.reloadView(engine);
+            }
             if (window.multiAiHub && typeof window.multiAiHub.renderPanesGrid === 'function') {
               window.multiAiHub.renderPanesGrid();
             }
@@ -354,6 +351,36 @@
     ::-webkit-scrollbar-track { background: var(--bg-subtle); }
     ::-webkit-scrollbar-thumb { background: var(--accent-primary); border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--accent-secondary); }
+
+    /* Dynamic Scrollbars & Auto-Overflow for Headers, Containers & Toolbars */
+    .scrollbar-thin {
+      scrollbar-width: thin;
+      scrollbar-color: var(--accent-primary, rgba(156, 163, 175, 0.5)) transparent;
+    }
+    .scrollbar-thin::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .scrollbar-thin::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .scrollbar-thin::-webkit-scrollbar-thumb {
+      background: var(--accent-primary, rgba(156, 163, 175, 0.5));
+      border-radius: 9999px;
+    }
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+      background: var(--accent-secondary, rgba(156, 163, 175, 0.8));
+    }
+
+    .auto-scroll-x {
+      overflow-x: auto !important;
+      overflow-y: hidden !important;
+      max-width: 100%;
+    }
+    .auto-scroll-y {
+      overflow-y: auto !important;
+      max-height: 100%;
+    }
 
     /* Prose / Markdown Styling */
     .prose-custom p { margin-bottom: 0.75rem; line-height: 1.65; }
@@ -1458,14 +1485,7 @@
           New Intelligence Session
         </button>
 
-        <!-- Multi-AI Workstation Sidebar Quick Trigger -->
-        <button id="sidebarMultiAiBtn" class="w-full py-2 px-3 bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 hover:from-purple-100 hover:to-indigo-100 dark:bg-gradient-to-r dark:from-purple-950/40 dark:via-indigo-950/40 dark:to-blue-950/40 dark:hover:from-purple-900/50 dark:hover:to-indigo-900/50 border border-purple-300 dark:border-purple-800/60 rounded-xl text-xs font-bold text-purple-800 dark:text-purple-300 flex items-center justify-between transition shadow-2xs cursor-pointer" title="Open Multi-AI Convergence Workstation">
-          <span class="flex items-center gap-2">
-            <span>🌐</span>
-            <span>Multi-AI Workstation</span>
-          </span>
-          <span class="text-[9px] px-2 py-0.5 rounded-full bg-purple-600 text-white font-mono font-bold">Copilot • Gemini • GPT</span>
-        </button>
+
       </div>
 
       <!-- Gems & Personas Studio -->
@@ -1549,6 +1569,7 @@
             title="Filter session history by AI source"
           >
             <option value="all">🌐 All AIs &amp; Sentinel (Show All)</option>
+            <option value="conference">🤝 AI Conferences</option>
             <option value="sentinel">🤖 Sentinel (Local Edge Engine)</option>
             <option value="copilot">🔵 Microsoft Copilot</option>
             <option value="gemini">✨ Google Gemini</option>

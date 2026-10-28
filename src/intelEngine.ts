@@ -477,6 +477,8 @@ interface ChatSession {
   gemId: string;
   updatedAt: number;
   engineSource?: string;
+  isConference?: boolean;
+  conferenceData?: any;
 }
 
 interface FolderItem {
@@ -11537,6 +11539,8 @@ export function saveCapturedSession(data: {
   prompt: string;
   response: string;
   messages?: Array<{ role: 'user' | 'assistant'; text?: string; rawText?: string; html?: string }>;
+  isConference?: boolean;
+  conferenceData?: any;
 }) {
   const src = data.engineSource || 'sentinel';
   const engineMap: Record<string, string> = {
@@ -11547,6 +11551,7 @@ export function saveCapturedSession(data: {
     claude: 'Anthropic Claude',
     perplexity: 'Perplexity AI',
     custom: 'Custom AI Browser',
+    conference: 'AI-to-AI Conferences',
   };
 
   const groupName = engineMap[src] || 'Multi-AI Captures';
@@ -11562,6 +11567,7 @@ export function saveCapturedSession(data: {
       perplexity: '#8B5CF6',
       custom: '#4F46E5',
       sentinel: '#00C4E7',
+      conference: '#F59E0B',
     };
     const folderIconMap: Record<string, string> = {
       copilot: '🔵',
@@ -11571,6 +11577,7 @@ export function saveCapturedSession(data: {
       perplexity: '🟣',
       custom: '🌐',
       sentinel: '🤖',
+      conference: '🤝',
     };
 
     targetFolder = {
@@ -11584,24 +11591,44 @@ export function saveCapturedSession(data: {
     state.folders.push(targetFolder);
   }
 
-  // Create new ChatSession
-  const newSessionId = `session_${src}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const messages = data.messages || [
     { role: 'user', text: data.prompt, rawText: data.prompt },
     { role: 'assistant', text: data.response, rawText: data.response },
   ];
 
-  const newSession: ChatSession = {
-    id: newSessionId,
-    title: data.title,
-    folderId: targetFolder ? targetFolder.id : null,
-    messages: messages,
-    gemId: state.activeGemId || 'gem_general_assistant',
-    updatedAt: Date.now(),
-    engineSource: src,
-  };
+  // If updating an active conference session
+  let existingSession = (data.isConference || src === 'conference')
+    ? state.sessions.find((s) => s.id === (window as any).aiConference?.state?.activeSessionId)
+    : null;
 
-  state.sessions.unshift(newSession);
+  if (existingSession) {
+    existingSession.title = data.title;
+    existingSession.messages = messages;
+    existingSession.updatedAt = Date.now();
+    existingSession.conferenceData = data.conferenceData;
+    existingSession.isConference = true;
+  } else {
+    // Create new ChatSession
+    const newSessionId = `session_${src}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newSession: ChatSession = {
+      id: newSessionId,
+      title: data.title,
+      folderId: targetFolder ? targetFolder.id : null,
+      messages: messages,
+      gemId: state.activeGemId || 'gem_general_assistant',
+      updatedAt: Date.now(),
+      engineSource: src,
+      isConference: data.isConference || src === 'conference',
+      conferenceData: data.conferenceData,
+    };
+
+    if ((window as any).aiConference && (data.isConference || src === 'conference')) {
+      (window as any).aiConference.state.activeSessionId = newSessionId;
+    }
+
+    state.sessions.unshift(newSession);
+  }
+
   persistSessions();
   renderChatHistoryUI();
 }
@@ -11788,6 +11815,7 @@ function createSessionItemElem(session: ChatSession) {
     perplexity: '🟣',
     custom: '🌐',
     sentinel: '🤖',
+    conference: '🤝',
   };
   const icon = engineIcons[session.engineSource || 'sentinel'] || '💬';
 
@@ -11857,6 +11885,18 @@ window.createNewChatInFolder = (folderId: string) => createNewChat(folderId);
 function switchSession(id: string) {
   const s = state.sessions.find((item) => item.id === id);
   if (!s) return;
+
+  // Requirement 4: Automatic resumption of AI-to-AI Conference sessions
+  if (s.engineSource === 'conference' || s.isConference || s.conferenceData) {
+    if ((window as any).aiConference && typeof (window as any).aiConference.resumeSession === 'function') {
+      (window as any).aiConference.resumeSession(s);
+      (window as any).aiConference.open();
+      state.currentSessionId = id;
+      renderChatHistoryUI();
+      return;
+    }
+  }
+
   state.currentSessionId = id;
   if (s.gemId && state.gems.some((g) => g.id === s.gemId)) {
     state.activeGemId = s.gemId;
@@ -12241,9 +12281,9 @@ export function renderMultiAiWorkspacePanes() {
       : 'border border-gray-300 dark:border-intel-border/80 shadow-md bg-white dark:bg-intel-900 opacity-90 hover:opacity-100';
 
     if (isDesktop) {
-      // Electron Native Webview with Persistent Partition
+      // Electron Native WebContentsView Slot with Persistent Partition
       return `
-        <div class="flex-1 h-full min-h-[480px] flex flex-col rounded-2xl overflow-hidden transition-all ${cardBorderClasses}" data-engine-pane="${engKey}">
+        <div class="native-view-column flex-1 h-full min-h-[480px] flex flex-col rounded-2xl overflow-hidden transition-all ${cardBorderClasses}" data-engine="${engKey}" data-engine-pane="${engKey}">
           <div class="px-3.5 py-2.5 bg-gray-50 dark:bg-intel-850 border-b border-gray-200 dark:border-intel-border flex items-center justify-between gap-2 shrink-0">
             <div class="flex items-center gap-2 min-w-0 cursor-pointer" onclick="window.setActiveExternalEngine('${engKey}')" title="Click to focus ${escapeHtml(cfg.name)}">
               <span class="text-base">${cfg.avatar}</span>
@@ -12272,16 +12312,14 @@ export function renderMultiAiWorkspacePanes() {
               </button>
             </div>
           </div>
-          <div class="flex-1 relative w-full h-full bg-white">
-            <webview
-              id="${engKey === 'gemini' ? 'geminiWebview' : engKey + 'Webview'}"
-              src="${engKey === 'gemini' ? 'https://gemini.google.com/app' : cfg.url}"
-              partition="persist:sentinel_ai_workspace"
-              allowpopups="true"
-              webpreferences="contextIsolation=yes"
-              class="w-full h-full border-0"
-              style="width: 100%; height: 100%; display: flex;"
-            ></webview>
+          <div class="flex-1 relative w-full h-full bg-[#06234D]/20 overflow-hidden">
+            <div id="slot_${engKey}" class="w-full h-full native-view-slot bg-[#06234D]/20 flex flex-col items-center justify-center p-4 text-center select-none">
+              <div class="w-10 h-10 rounded-xl bg-[#0B254E] border border-[#00C4E7]/40 flex items-center justify-center text-xl shadow mb-2">
+                ${cfg.avatar}
+              </div>
+              <h4 class="text-xs font-bold text-white mb-0.5">${escapeHtml(cfg.name)}</h4>
+              <p class="text-[10px] text-cyan-300">Native Chromium WebContentsView Slot</p>
+            </div>
           </div>
         </div>
       `;
@@ -12897,6 +12935,33 @@ export function initMultiAiWorkstation() {
   if (!window.importToNotepad) (window as any).importToNotepad = importEngineResponseToWorkDesk;
   if (!window.synthesizeBest) (window as any).synthesizeBest = synthesizeBestEngines;
   if (!window.distillToMemoryHub) (window as any).distillToMemoryHub = distillEngineResponseToMemoryHub;
+
+  (window as any).saveChatToHistory = function (item: any) {
+    saveCapturedSession({
+      engineSource: item.aiSource || item.engine || 'sentinel',
+      title: item.title || `[${(item.aiSource || item.engine || 'AI').toUpperCase()}] ${item.prompt ? item.prompt.substring(0, 32) + '...' : 'Captured Chat'}`,
+      prompt: item.prompt || '',
+      response: item.response || '',
+    });
+  };
+
+  (window as any).renderSessionHistoryList = function () {
+    renderChatHistoryUI();
+  };
+
+  (window as any).appendToWorkDeskNotepad = function (text: string) {
+    const editor = document.getElementById('workDeskEditor') as HTMLTextAreaElement | null;
+    if (editor) {
+      editor.value = editor.value ? editor.value + '\n\n' + text : text;
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+      renderWorkDeskNotepadView();
+      const deskPanel = document.getElementById('workDeskPanel');
+      if (deskPanel && deskPanel.classList.contains('hidden')) {
+        toggleWorkDesk(true);
+      }
+    }
+  };
+
   (window as any).dispatchQuickSamplePrompt = (engine: 'copilot' | 'chatgpt' | 'gemini', prompt: string) => {
     dispatchPromptToExternalEngines(prompt, [engine]);
   };

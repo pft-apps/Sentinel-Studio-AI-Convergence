@@ -1,36 +1,64 @@
 /**
  * =====================================================================
  * SENTINEL STUDIO™ — ELECTRON STANDALONE DESKTOP WORKSTATION
- * Enterprise Capability Hub & Multi-AI OS
+ * Enterprise Capability Hub & Native Multi-AI WebContentsView OS
  * Architect & Developer: Patrick Jay F. Tanap, CPA, CICA
- * Main Process, Partition Manager & Browser-Based Session Relay
+ * Main Process, Native Chromium WebContentsView & Partition Manager
  * =====================================================================
  */
 
-const { app, BrowserWindow, ipcMain, dialog, session, shell } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, dialog, session, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 
-// 1. Hardware Acceleration and WebGPU Support
+// 1. Global Chrome Spoofing, Session Partitioning & WebGPU Acceleration
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+app.commandLine.appendSwitch('disable-features', 'WebAuthentication,WebAuthenticationConditionalUI');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('enable-unsafe-webgpu');
 app.commandLine.appendSwitch('enable-features', 'Vulkan,WebGPU');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
-const PERSISTENT_SESSION_PARTITION = 'persist:sentinel_ai_workspace';
 const SHARED_PARTITION = 'persist:sentinel_ai_workspace';
+const REAL_CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
+app.userAgentFallback = REAL_CHROME_UA;
 
+// 2. WebContentsView Registry & Layout Configuration
+const AI_CONFIGS = {
+  copilot: { url: 'https://copilot.microsoft.com', title: 'MS Copilot' },
+  chatgpt: { url: 'https://chatgpt.com', title: 'ChatGPT' },
+  gemini: { url: 'https://gemini.google.com/app', title: 'Google Gemini' },
+  claude: { url: 'https://claude.ai', title: 'Claude' },
+  perplexity: { url: 'https://www.perplexity.ai', title: 'Perplexity' },
+  custom: { url: 'https://chat.deepseek.com/', title: 'Custom AI Browser' }
+};
+
+const aiViews = {};
+let activeLayout = '3-split'; // 'single', 'dual', '3-split', '4-split', '5-split', 'all', 'hidden'
+let activeKeys = ['copilot', 'chatgpt', 'gemini'];
 let mainWindowInstance = null;
 let sessionRelayServer = null;
 
 /**
- * Clean Frame Headers for Embedded Workstation Webviews
+ * Configure Chromium Headers for Persistent AI Session
+ * Eliminates 403 disallowed_useragent and enables clean iframe/popup behaviors
  */
 function configurePartitionHeaders(targetSession) {
   if (!targetSession) return;
 
+  targetSession.setUserAgent(REAL_CHROME_UA);
+
   const filter = { urls: ['*://*/*'] };
+
+  targetSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
+    const requestHeaders = { ...details.requestHeaders };
+    requestHeaders['User-Agent'] = REAL_CHROME_UA;
+    requestHeaders['Sec-CH-UA'] = '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"';
+    requestHeaders['Sec-CH-UA-Mobile'] = '?0';
+    requestHeaders['Sec-CH-UA-Platform'] = '"Windows"';
+    callback({ cancel: false, requestHeaders });
+  });
 
   targetSession.webRequest.onHeadersReceived(filter, (details, callback) => {
     const responseHeaders = { ...details.responseHeaders };
@@ -48,9 +76,72 @@ function configurePartitionHeaders(targetSession) {
       }
     });
 
-    // Critical: Always invoke callback to prevent hanging Chromium network requests
     callback({ cancel: false, responseHeaders });
   });
+}
+
+/**
+ * Instantiate Native WebContentsView for each AI engine
+ */
+function initAiViews(mainWindow) {
+  if (!WebContentsView) {
+    console.warn('[WebContentsView] Not supported in current Electron version, falling back.');
+    return;
+  }
+
+  const ses = session.fromPartition(SHARED_PARTITION);
+  configurePartitionHeaders(ses);
+
+  for (const [key, cfg] of Object.entries(AI_CONFIGS)) {
+    try {
+      if (aiViews[key]) {
+        try {
+          if (mainWindow.contentView && mainWindow.contentView.removeChildView) {
+            mainWindow.contentView.removeChildView(aiViews[key]);
+          }
+        } catch (_) {}
+      }
+
+      const view = new WebContentsView({
+        webPreferences: {
+          partition: SHARED_PARTITION,
+          contextIsolation: true,
+          nodeIntegration: false,
+          spellcheck: true
+        }
+      });
+
+      view.webContents.setUserAgent(REAL_CHROME_UA);
+      view.webContents.loadURL(cfg.url);
+
+      // Keep OAuth and SSO popups inside the same shared partition
+      view.webContents.setWindowOpenHandler(({ url }) => {
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            width: 520,
+            height: 700,
+            title: `Sign In — ${cfg.title}`,
+            autoHideMenuBar: true,
+            webPreferences: {
+              partition: SHARED_PARTITION,
+              contextIsolation: true,
+              nodeIntegration: false
+            }
+          }
+        };
+      });
+
+      // Handle in-view title / status updates
+      view.webContents.on('did-finish-load', () => {
+        console.info(`[WebContentsView] Loaded ${key} (${cfg.url})`);
+      });
+
+      aiViews[key] = view;
+    } catch (err) {
+      console.error(`[WebContentsView] Failed to initialize view for ${key}:`, err);
+    }
+  }
 }
 
 /**
@@ -181,8 +272,8 @@ function openDirectLoginWindow(targetMainWindow, engine = 'gemini') {
   }
 
   const authWin = new BrowserWindow({
-    width: 500,
-    height: 650,
+    width: 520,
+    height: 700,
     title: 'Sign In — Sentinel Studio Workspace',
     autoHideMenuBar: true,
     webPreferences: {
@@ -192,6 +283,7 @@ function openDirectLoginWindow(targetMainWindow, engine = 'gemini') {
     },
   });
 
+  authWin.webContents.setUserAgent(REAL_CHROME_UA);
   authWin.loadURL(targetUrl);
 
   const checkFinish = (url) => {
@@ -212,6 +304,10 @@ function openDirectLoginWindow(targetMainWindow, engine = 'gemini') {
         if (win && !win.isDestroyed()) {
           win.webContents.send('auth:login-success', { engine });
         }
+        // Also reload the native WebContentsView
+        if (aiViews[engine] && aiViews[engine].webContents) {
+          aiViews[engine].webContents.reload();
+        }
       }, 800);
     }
   };
@@ -229,11 +325,10 @@ function createWindow() {
     minWidth: 1200,
     minHeight: 768,
     backgroundColor: '#06234D',
-    title: 'Sentinel Studio — Enterprise Capability Hub',
+    title: 'Sentinel Studio — Enterprise Capability Hub & Multi-AI Workstation',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      webviewTag: true,
       preload: path.join(__dirname, 'preload.js'),
     },
   });
@@ -243,16 +338,19 @@ function createWindow() {
 
   // Configure partitions
   configurePartitionHeaders(session.defaultSession);
-  const aiWorkspaceSession = session.fromPartition(PERSISTENT_SESSION_PARTITION);
+  const aiWorkspaceSession = session.fromPartition(SHARED_PARTITION);
   configurePartitionHeaders(aiWorkspaceSession);
 
-  // 1. Intercept main window popups: Retain OAuth URLs inside internal top-level window
+  // Initialize Native WebContentsViews
+  initAiViews(mainWindow);
+
+  // Intercept main window popups: Retain OAuth URLs inside internal top-level window
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     return {
       action: 'allow',
       overrideBrowserWindowOptions: {
-        width: 500,
-        height: 650,
+        width: 520,
+        height: 700,
         title: 'Sign In — Sentinel Studio Workspace',
         autoHideMenuBar: true,
         webPreferences: {
@@ -264,27 +362,7 @@ function createWindow() {
     };
   });
 
-  // 2. Intercept webview popups
-  mainWindow.webContents.on('did-attach-webview', (event, webContents) => {
-    webContents.setWindowOpenHandler(({ url }) => {
-      return {
-        action: 'allow',
-        overrideBrowserWindowOptions: {
-          width: 500,
-          height: 650,
-          title: 'Sign In — Sentinel Studio Workspace',
-          autoHideMenuBar: true,
-          webPreferences: {
-            partition: SHARED_PARTITION,
-            contextIsolation: true,
-            nodeIntegration: false,
-          },
-        },
-      };
-    });
-  });
-
-  // 3. Automatically close child auth popups upon completed sign-in
+  // Automatically close child auth popups upon completed sign-in
   app.on('browser-window-created', (event, childWindow) => {
     if (childWindow !== mainWindow) {
       childWindow.webContents.on('did-navigate', (e, navigatedUrl) => {
@@ -303,6 +381,10 @@ function createWindow() {
             }
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('auth:login-success', { engine: 'all' });
+            }
+            // Reload all native views
+            for (const view of Object.values(aiViews)) {
+              try { view.webContents.reload(); } catch (_) {}
             }
           }, 800);
         }
@@ -338,6 +420,245 @@ function createWindow() {
 }
 
 function setupIpcHandlers() {
+  // 1. Dynamic Split-Screen Bounds Layout Engine (`view:sync-bounds`)
+  ipcMain.on('view:sync-bounds', (event, payload) => {
+    if (!mainWindowInstance || mainWindowInstance.isDestroyed()) return;
+    if (!mainWindowInstance.contentView) return;
+
+    const layout = payload?.layout || activeLayout;
+    const slots = payload?.slots || [];
+    activeLayout = layout;
+    activeKeys = slots.map((s) => s.engineKey);
+
+    // Remove all views first from contentView
+    for (const key of Object.keys(aiViews)) {
+      try {
+        mainWindowInstance.contentView.removeChildView(aiViews[key]);
+      } catch (_) {}
+    }
+
+    // If layout is hidden or no active slots, keep them unmounted so other UI is unobstructed
+    if (layout === 'hidden' || slots.length === 0) {
+      return;
+    }
+
+    // Add and position only the views matching the active layout
+    slots.forEach((slot) => {
+      const view = aiViews[slot.engineKey];
+      if (view && slot.bounds) {
+        const { x, y, width, height } = slot.bounds;
+        if (width > 0 && height > 0) {
+          try {
+            mainWindowInstance.contentView.addChildView(view);
+            view.setBounds({
+              x: Math.round(x),
+              y: Math.round(y),
+              width: Math.round(width),
+              height: Math.round(height),
+            });
+          } catch (err) {
+            console.warn(`[WebContentsView] Error positioning view for ${slot.engineKey}:`, err);
+          }
+        }
+      }
+    });
+  });
+
+  // 2. Feature 1: Multi-Broadcast Prompt Execution (`ai:broadcast-prompt`)
+  ipcMain.handle('ai:broadcast-prompt', async (event, promptText) => {
+    const results = [];
+    const targets = activeKeys.length > 0 ? activeKeys : ['copilot', 'chatgpt', 'gemini'];
+
+    for (const key of targets) {
+      const view = aiViews[key];
+      if (view && view.webContents) {
+        const injectionScript = `
+          (() => {
+            try {
+              const text = ${JSON.stringify(promptText)};
+              const target = document.querySelector('rich-textarea div[contenteditable="true"]') // Gemini
+                          || document.querySelector('#prompt-textarea')                         // ChatGPT
+                          || document.querySelector('div[contenteditable="true"]')               // Claude
+                          || document.querySelector('textarea#userInput')                        // Copilot
+                          || document.querySelector('textarea[placeholder*="Ask"]')              // Perplexity
+                          || document.querySelector('textarea');                                 // Fallback
+              if (target) {
+                target.focus();
+                if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') {
+                  target.value = text;
+                  target.dispatchEvent(new Event('input', { bubbles: true }));
+                  target.dispatchEvent(new Event('change', { bubbles: true }));
+                } else {
+                  document.execCommand('selectAll', false, null);
+                  document.execCommand('insertText', false, text);
+                  target.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                setTimeout(() => {
+                  const sendBtn = document.querySelector('button[aria-label*="Send"]')
+                               || document.querySelector('button[data-testid="send-button"]')
+                               || document.querySelector('button.send-button')
+                               || document.querySelector('button[aria-label*="Submit"]')
+                               || document.querySelector('button.bg-super')
+                               || document.querySelector('fieldset button');
+                  if (sendBtn && !sendBtn.disabled) {
+                    sendBtn.click();
+                  } else {
+                    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, keyCode: 13, which: 13 }));
+                  }
+                }, 300);
+                return { success: true };
+              }
+              return { success: false, reason: 'Input element not found' };
+            } catch (err) {
+              return { success: false, error: err.message };
+            }
+          })();
+        `;
+        const res = await view.webContents.executeJavaScript(injectionScript).catch((e) => ({ error: e.message }));
+        results.push({ engine: key, result: res });
+      }
+    }
+    return results;
+  });
+
+  // 3. Feature 2: Local Chat Capture (`ai:capture-chat`)
+  ipcMain.handle('ai:capture-chat', async (event, targetEngine) => {
+    const enginesToCapture = targetEngine === 'all'
+      ? (activeKeys.length > 0 ? activeKeys : ['copilot', 'chatgpt', 'gemini', 'claude', 'perplexity'])
+      : [targetEngine];
+    const captured = [];
+
+    for (const key of enginesToCapture) {
+      const view = aiViews[key];
+      if (view && view.webContents) {
+        const scrapeScript = `
+          (() => {
+            try {
+              let userText = "";
+              let assistantText = "";
+              
+              // Universal fallback scraping
+              const userTurns = document.querySelectorAll('[data-message-author-role="user"], .user-query, [data-testid*="user"], query-text, .user-message');
+              if (userTurns.length > 0) userText = userTurns[userTurns.length - 1].innerText;
+
+              const modelTurns = document.querySelectorAll('[data-message-author-role="assistant"], .model-response-text, .font-claude-message, [data-testid*="assistant"], message-content, .response-text');
+              if (modelTurns.length > 0) assistantText = modelTurns[modelTurns.length - 1].innerText;
+
+              return { userText, assistantText, url: window.location.href };
+            } catch (e) {
+              return { error: e.message };
+            }
+          })();
+        `;
+        const data = await view.webContents.executeJavaScript(scrapeScript).catch(() => ({}));
+        captured.push({
+          engine: key,
+          timestamp: new Date().toISOString(),
+          prompt: data?.userText || "Manual sync capture",
+          response: data?.assistantText || "No response text captured",
+          url: data?.url || AI_CONFIGS[key]?.url
+        });
+      }
+    }
+    return captured;
+  });
+
+  // 4. Feature 3: AI-to-AI Conference Step Execution (`ai:conference-step`)
+  ipcMain.handle('ai:conference-step', async (event, { sourceEngine, targetEngine, promptTemplate, customTopic }) => {
+    try {
+      let sourceText = '';
+      const srcView = aiViews[sourceEngine];
+      if (srcView && srcView.webContents) {
+        const scrapeScript = `
+          (() => {
+            const modelTurns = document.querySelectorAll('[data-message-author-role="assistant"], .model-response-text, .font-claude-message, [data-testid*="assistant"], message-content');
+            return modelTurns.length > 0 ? modelTurns[modelTurns.length - 1].innerText : "";
+          })();
+        `;
+        sourceText = await srcView.webContents.executeJavaScript(scrapeScript).catch(() => '');
+      }
+
+      if (!sourceText && customTopic) {
+        sourceText = customTopic;
+      }
+
+      const speakerName = AI_CONFIGS[sourceEngine]?.title || sourceEngine;
+      const targetName = AI_CONFIGS[targetEngine]?.title || targetEngine;
+      const formattedPrompt = promptTemplate
+        ? promptTemplate.replace('{sourceText}', sourceText).replace('{speaker}', speakerName)
+        : `[Cross-AI Conference with ${speakerName}]:\n\n"${sourceText}"\n\nPlease evaluate, critique, or expand upon this perspective from your domain model.`;
+
+      const tgtView = aiViews[targetEngine];
+      let dispatched = false;
+      if (tgtView && tgtView.webContents) {
+        const injectionScript = `
+          (() => {
+            const text = ${JSON.stringify(formattedPrompt)};
+            const target = document.querySelector('rich-textarea div[contenteditable="true"]')
+                        || document.querySelector('#prompt-textarea')
+                        || document.querySelector('div[contenteditable="true"]')
+                        || document.querySelector('textarea#userInput')
+                        || document.querySelector('textarea');
+            if (target) {
+              target.focus();
+              if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') {
+                target.value = text;
+                target.dispatchEvent(new Event('input', { bubbles: true }));
+              } else {
+                document.execCommand('selectAll', false, null);
+                document.execCommand('insertText', false, text);
+                target.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+              setTimeout(() => {
+                const sendBtn = document.querySelector('button[aria-label*="Send"]')
+                             || document.querySelector('button[data-testid="send-button"]')
+                             || document.querySelector('button.send-button')
+                             || document.querySelector('button[aria-label*="Submit"]')
+                             || document.querySelector('fieldset button');
+                if (sendBtn && !sendBtn.disabled) sendBtn.click();
+              }, 300);
+              return true;
+            }
+            return false;
+          })();
+        `;
+        dispatched = await tgtView.webContents.executeJavaScript(injectionScript).catch(() => false);
+      }
+
+      return {
+        status: 'step_dispatched',
+        sourceEngine,
+        targetEngine,
+        sourceName: speakerName,
+        targetName: targetName,
+        sourceText: sourceText || '(No output yet captured)',
+        formattedPrompt,
+        dispatched,
+      };
+    } catch (err) {
+      return { status: 'error', error: err.message };
+    }
+  });
+
+  // View Navigation & Reload Controls
+  ipcMain.handle('view:reload', async (_event, engineKey) => {
+    const view = aiViews[engineKey];
+    if (view && view.webContents) {
+      view.webContents.reload();
+      return { success: true };
+    }
+    return { success: false };
+  });
+
+  ipcMain.handle('view:navigate', async (_event, { engineKey, url }) => {
+    const view = aiViews[engineKey];
+    if (view && view.webContents && url) {
+      view.webContents.loadURL(url);
+      return { success: true };
+    }
+    return { success: false };
+  });
+
   // Directory & File Management
   ipcMain.handle('dialog:select-directory', async () => {
     const result = await dialog.showOpenDialog({
@@ -377,7 +698,7 @@ function setupIpcHandlers() {
 
   ipcMain.handle('app:get-version', () => app.getVersion());
 
-  // External Browser Opener — Filter out Auth & AI Domains
+  // External Browser Opener — Suppress internal Auth & AI Domains
   ipcMain.handle('shell:open-external', async (_event, url) => {
     if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
       const isAuthOrAiDomain =
@@ -401,7 +722,7 @@ function setupIpcHandlers() {
 
   // Multi-AI Dedicated Companion Window
   ipcMain.handle('multi-ai:open-companion', async (_event, url, partitionName) => {
-    const targetPartition = partitionName || PERSISTENT_SESSION_PARTITION;
+    const targetPartition = partitionName || SHARED_PARTITION;
     const targetSession = session.fromPartition(targetPartition);
     configurePartitionHeaders(targetSession);
 
@@ -416,14 +737,15 @@ function setupIpcHandlers() {
       },
     });
     companionWindow.setMenuBarVisibility(false);
+    companionWindow.webContents.setUserAgent(REAL_CHROME_UA);
     companionWindow.loadURL(url);
     return { success: true };
   });
 
   ipcMain.handle('multi-ai:clear-partition', async (_event, partitionName) => {
-    if (!partitionName) return { success: false };
+    const target = partitionName || SHARED_PARTITION;
     try {
-      const targetSession = session.fromPartition(partitionName);
+      const targetSession = session.fromPartition(target);
       await targetSession.clearStorageData();
       return { success: true };
     } catch (e) {
@@ -431,13 +753,13 @@ function setupIpcHandlers() {
     }
   });
 
-  // 1. Direct In-App Login Window Trigger (Top-Level Window, NOT webview)
+  // Direct In-App Login Window Trigger (Top-Level Window, NOT webview)
   ipcMain.handle('auth:start-direct-login', async (_event, options) => {
     const engine = typeof options === 'string' ? options : (options?.engine || 'gemini');
     return openDirectLoginWindow(mainWindowInstance, engine);
   });
 
-  // 2. External Browser Session Relay Trigger
+  // External Browser Session Relay Trigger
   ipcMain.handle('auth:open-external-login', async () => {
     startSessionRelayServer(mainWindowInstance);
     await shell.openExternal('https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app');
@@ -466,7 +788,7 @@ function setupIpcHandlers() {
   ipcMain.handle('auth:get-session', async () => {
     return {
       authenticated: true,
-      authMethod: 'Direct Window / Browser Relay',
+      authMethod: 'Direct Window / WebContentsView Session',
       partition: SHARED_PARTITION,
       user: {
         name: 'Patrick Jay F. Tanap, CPA, CICA',
