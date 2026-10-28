@@ -3,7 +3,7 @@
  * SENTINEL STUDIO™ — ELECTRON STANDALONE DESKTOP WORKSTATION
  * Enterprise Capability Hub & Native Multi-AI WebContentsView OS
  * Architect & Developer: Patrick Jay F. Tanap, CPA, CICA
- * Complete Multi-Provider Identity Propagation & Auth Synchronization
+ * Restore Header Sign-In IPC Handlers & Universal Auth Propagation Engine
  * =====================================================================
  */
 
@@ -11,12 +11,11 @@ const { app, BrowserWindow, WebContentsView, session, ipcMain, dialog, shell } =
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const http = require('http');
 
 const WORKSPACE_PARTITION = 'persist:sentinel_ai_workspace';
 const REAL_CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
 
-// 1. Locate default Google Chrome / Sentinel user profile directory on Windows
+// 1. Locate custom user profile directory to avoid profile lock collisions
 const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
 const sentinelProfilePath = path.join(localAppData, 'SentinelStudio', 'ChromeSharedProfile');
 
@@ -39,10 +38,10 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.userAgentFallback = REAL_CHROME_UA;
 
 let mainWindow = null;
+let authWindow = null;
 const aiViews = {};
 let activeKeys = ['copilot', 'chatgpt', 'gemini'];
 let activeLayout = '3-split';
-let sessionRelayServer = null;
 
 const AI_CONFIGS = {
   copilot: { url: 'https://copilot.microsoft.com', title: 'MS Copilot' },
@@ -53,20 +52,18 @@ const AI_CONFIGS = {
   custom: { url: 'https://chat.deepseek.com/', title: 'Custom AI Browser' }
 };
 
-// 3. Universal Cookie Sync Engine (Transfers all identity and session cookies)
+// 3. Universal Cookie Synchronization Routine
 async function syncAllAuthCookies(sourceSession, targetSession) {
   try {
     const cookies = await sourceSession.cookies.get({});
-    console.log(`[Auth Sync] Ingesting ${cookies.length} cookies from source session...`);
+    console.log(`[Auth Sync] Ingesting ${cookies.length} cookies into workspace partition...`);
 
     for (const c of cookies) {
-      // Normalize domain and URL construction
       const isDomainScoped = c.domain.startsWith('.');
       const cleanDomain = isDomainScoped ? c.domain.slice(1) : c.domain;
       const scheme = c.secure ? 'https://' : 'http://';
       const cookieUrl = `${scheme}${cleanDomain}${c.path || '/'}`;
 
-      // Normalize sameSite attribute for Chromium's strict setter
       let sameSite = 'unspecified';
       if (c.sameSite === 'strict' || c.sameSite === 'lax' || c.sameSite === 'no_restriction') {
         sameSite = c.sameSite;
@@ -87,15 +84,13 @@ async function syncAllAuthCookies(sourceSession, targetSession) {
       try {
         await targetSession.cookies.set(cookieDetails);
       } catch (err) {
-        // Fallback for strict domain-boundary set rejections
         delete cookieDetails.domain;
         await targetSession.cookies.set(cookieDetails).catch(() => {});
       }
     }
 
-    // Force Chromium to commit the cookie store to disk immediately
     await targetSession.cookies.flushStore();
-    console.log('[Auth Sync] Cookie store successfully flushed to workspace partition.');
+    console.log('[Auth Sync] Cookie store flushed to workspace partition.');
     return true;
   } catch (err) {
     console.error('[Auth Sync Critical Error]:', err);
@@ -103,14 +98,13 @@ async function syncAllAuthCookies(sourceSession, targetSession) {
   }
 }
 
-// 4. Configure Headers & Security Rules for Sessions
+// 4. Session Rules & Desktop Headers Configuration
 function configureSessionRules(targetSession) {
   if (!targetSession) return;
   targetSession.setUserAgent(REAL_CHROME_UA);
 
   const filter = { urls: ['*://*/*'] };
 
-  // Spoof genuine desktop Chrome Client Hints
   targetSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
     const requestHeaders = { ...details.requestHeaders };
     requestHeaders['User-Agent'] = REAL_CHROME_UA;
@@ -120,7 +114,6 @@ function configureSessionRules(targetSession) {
     callback({ cancel: false, requestHeaders });
   });
 
-  // Strip iframe frame-ancestors restrictions across all portals
   targetSession.webRequest.onHeadersReceived(filter, (details, callback) => {
     const responseHeaders = { ...details.responseHeaders };
     delete responseHeaders['x-frame-options'];
@@ -142,8 +135,7 @@ app.whenReady().then(() => {
   configureSessionRules(session.defaultSession);
   configureSessionRules(workspaceSession);
 
-  // Live cookie synchronization listener:
-  // Propagates Google, OpenAI, Anthropic, Perplexity, and Microsoft auth cookies as they change
+  // Live cookie synchronization listener for real-time authentication events
   session.defaultSession.cookies.on('changed', async (event, cookie, cause, removed) => {
     if (!removed) {
       const isAuthTarget =
@@ -194,10 +186,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (sessionRelayServer) {
-    try { sessionRelayServer.close(); } catch (_) {}
-    sessionRelayServer = null;
-  }
   if (process.platform !== 'darwin') app.quit();
 });
 
@@ -236,7 +224,7 @@ function createMainWindow() {
     mainWindow.loadFile(rootHtmlPath).catch(() => {});
   }
 
-  // Handle header login popup window (opened in defaultSession for full native passkey support)
+  // Handle popups triggered inside main window
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     return {
       action: 'allow',
@@ -254,35 +242,13 @@ function createMainWindow() {
     };
   });
 
-  // When any auth popup closes, sync all cookies into workspace and reload all AI containers
-  app.on('browser-window-created', (e, childWin) => {
-    if (childWin !== mainWindow) {
-      childWin.on('closed', async () => {
-        console.log('[Auth Popup Closed] Executing full session synchronization...');
-        const workspaceSession = session.fromPartition(WORKSPACE_PARTITION);
-        await syncAllAuthCookies(session.defaultSession, workspaceSession);
-
-        // Reload all instantiated AI views so they immediately recognize the authenticated account
-        for (const [key, view] of Object.entries(aiViews)) {
-          if (view && view.webContents) {
-            try { view.webContents.reload(); } catch (_) {}
-          }
-        }
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('auth:session-updated');
-          mainWindow.webContents.send('auth:login-success', { engine: 'all' });
-        }
-      });
-    }
-  });
-
   initAiViews();
   return mainWindow;
 }
 
 function initAiViews() {
   if (!WebContentsView) {
-    console.warn('[WebContentsView] Not supported in current Electron version.');
+    console.warn('[WebContentsView] Not supported in current Electron environment.');
     return;
   }
 
@@ -302,7 +268,6 @@ function initAiViews() {
       view.webContents.setUserAgent(REAL_CHROME_UA);
       view.webContents.loadURL(cfg.url);
 
-      // Any login popup triggered from inside a container stays inside the workspace partition
       view.webContents.setWindowOpenHandler(({ url }) => {
         return {
           action: 'allow',
@@ -323,8 +288,88 @@ function initAiViews() {
   }
 }
 
+/**
+ * Open the dedicated native login window for Header Sign-In actions
+ */
+function openAuthWindow(loginUrl = 'https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app', engine = 'gemini') {
+  if (authWindow && !authWindow.isDestroyed()) {
+    authWindow.focus();
+    if (loginUrl) authWindow.loadURL(loginUrl);
+    return { status: 'focused' };
+  }
+
+  authWindow = new BrowserWindow({
+    width: 540,
+    height: 720,
+    title: 'Sign In — Sentinel Studio Workspace',
+    autoHideMenuBar: true,
+    parent: mainWindow || undefined,
+    webPreferences: {
+      session: session.defaultSession,
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  authWindow.webContents.setUserAgent(REAL_CHROME_UA);
+  authWindow.loadURL(loginUrl);
+
+  authWindow.on('closed', async () => {
+    authWindow = null;
+    console.log('[Auth Window Closed] Syncing sessions to workspace partition...');
+    const workspaceSession = session.fromPartition(WORKSPACE_PARTITION);
+    await syncAllAuthCookies(session.defaultSession, workspaceSession);
+
+    // Reload all AI views with newly populated cookies
+    for (const [key, view] of Object.entries(aiViews)) {
+      if (view && view.webContents) {
+        try { view.webContents.reload(); } catch (_) {}
+      }
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('auth:session-updated');
+      mainWindow.webContents.send('auth:login-success', { engine: engine || 'all' });
+    }
+  });
+
+  return { status: 'opened' };
+}
+
 // 6. Complete IPC Handlers Engine
 function setupIpcHandlers() {
+  // EXPLICIT LISTENERS FOR HEADER SIGN-IN ACTIONS
+  ipcMain.handle('auth:start-direct-login', (event, options) => {
+    let targetUrl = 'https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app';
+    const engine = typeof options === 'string' ? options : (options?.engine || 'gemini');
+    if (engine === 'chatgpt') targetUrl = 'https://chatgpt.com/auth/login';
+    else if (engine === 'claude') targetUrl = 'https://claude.ai/login';
+    else if (engine === 'perplexity') targetUrl = 'https://www.perplexity.ai';
+    else if (engine === 'copilot') targetUrl = 'https://copilot.microsoft.com';
+
+    return openAuthWindow(targetUrl, engine);
+  });
+
+  ipcMain.handle('auth:start-google-login', (event, options) => {
+    return openAuthWindow('https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app', 'gemini');
+  });
+
+  ipcMain.handle('auth:start-google-relay', (event, options) => {
+    return openAuthWindow('https://accounts.google.com/ServiceLogin?continue=https://gemini.google.com/app', 'gemini');
+  });
+
+  ipcMain.handle('auth:sync-now', async () => {
+    const workspaceSession = session.fromPartition(WORKSPACE_PARTITION);
+    const success = await syncAllAuthCookies(session.defaultSession, workspaceSession);
+    if (success) {
+      for (const [key, view] of Object.entries(aiViews)) {
+        if (view && view.webContents) {
+          try { view.webContents.reload(); } catch (_) {}
+        }
+      }
+    }
+    return { success };
+  });
+
   // Dynamic Bounds Layout Engine (`view:sync-bounds`)
   ipcMain.on('view:sync-bounds', (event, { layout, slots }) => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -365,21 +410,7 @@ function setupIpcHandlers() {
     });
   });
 
-  // Explicit Sync Trigger from Header (`auth:sync-now`)
-  ipcMain.handle('auth:sync-now', async () => {
-    const workspaceSession = session.fromPartition(WORKSPACE_PARTITION);
-    const success = await syncAllAuthCookies(session.defaultSession, workspaceSession);
-    if (success) {
-      for (const [key, view] of Object.entries(aiViews)) {
-        if (view && view.webContents) {
-          try { view.webContents.reload(); } catch (_) {}
-        }
-      }
-    }
-    return { success };
-  });
-
-  // Feature 1: Broadcast Prompt to Active Views (`ai:broadcast-prompt`)
+  // Feature 1: Broadcast Prompt (`ai:broadcast-prompt`)
   ipcMain.handle('ai:broadcast-prompt', async (event, promptText) => {
     const results = [];
     const targets = activeKeys.length > 0 ? activeKeys : ['copilot', 'chatgpt', 'gemini'];
@@ -632,7 +663,7 @@ function setupIpcHandlers() {
     return false;
   });
 
-  // Multi-AI Dedicated Companion Window
+  // Multi-AI Companion Window
   ipcMain.handle('multi-ai:open-companion', async (_event, url, partitionName) => {
     const targetPartition = partitionName || WORKSPACE_PARTITION;
     const targetSession = session.fromPartition(targetPartition);
@@ -665,11 +696,11 @@ function setupIpcHandlers() {
     }
   });
 
-  // Auth helper handlers
+  // Auth Session state helpers
   ipcMain.handle('auth:get-session', async () => {
     return {
       authenticated: true,
-      authMethod: 'Universal Session Sync Partition',
+      authMethod: 'Universal Header Sign-In & Workspace Sync',
       partition: WORKSPACE_PARTITION,
       user: {
         name: 'Patrick Jay F. Tanap, CPA, CICA',
@@ -683,6 +714,14 @@ function setupIpcHandlers() {
       const authSession = session.fromPartition(WORKSPACE_PARTITION);
       await authSession.clearStorageData({ storages: ['cookies', 'localstorage'] });
     } catch (_e) {}
+    return { success: true };
+  });
+
+  ipcMain.handle('auth:google-cancel', async () => {
+    if (authWindow && !authWindow.isDestroyed()) {
+      try { authWindow.close(); } catch (_) {}
+      authWindow = null;
+    }
     return { success: true };
   });
 }
