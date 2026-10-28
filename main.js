@@ -9,10 +9,28 @@
 
 const { app, BrowserWindow, WebContentsView, ipcMain, dialog, session, shell } = require('electron');
 const path = require('path');
+const os = require('os');
 const fs = require('fs');
 const http = require('http');
 
-// 1. Global Chrome Spoofing, Session Partitioning & WebGPU Acceleration
+// 1. Locate the default Google Chrome User Data directory on Windows
+const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+const chromeUserDataPath = path.join(localAppData, 'Google', 'Chrome', 'User Data');
+
+// 2. Define a dedicated clone directory to avoid profile lock collisions
+const sentinelProfilePath = path.join(localAppData, 'SentinelStudio', 'ChromeSharedProfile');
+
+// 3. Set Electron to use this dedicated profile path before app ready
+try {
+  if (!fs.existsSync(sentinelProfilePath)) {
+    fs.mkdirSync(sentinelProfilePath, { recursive: true });
+  }
+  app.setPath('userData', sentinelProfilePath);
+} catch (err) {
+  console.error('Failed to set custom profile path:', err);
+}
+
+// 4. Global Chrome Spoofing, Session Partitioning & WebGPU Acceleration
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 app.commandLine.appendSwitch('disable-features', 'WebAuthentication,WebAuthenticationConditionalUI');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
@@ -806,7 +824,65 @@ function setupIpcHandlers() {
   });
 }
 
-app.whenReady().then(() => {
+/**
+ * One-time cookie seeding from default session to workspace partition
+ */
+async function seedWorkspaceSession() {
+  const defaultSes = session.defaultSession;
+  const targetSes = session.fromPartition(SHARED_PARTITION);
+
+  try {
+    const googleCookies = await defaultSes.cookies.get({ domain: '.google.com' });
+    for (const cookie of googleCookies) {
+      const scheme = cookie.secure ? 'https://' : 'http://';
+      const domain = cookie.domain.startsWith('.') ? cookie.domain.slice(1) : cookie.domain;
+      await targetSes.cookies.set({
+        url: scheme + domain + (cookie.path || '/'),
+        name: cookie.name,
+        value: cookie.value,
+        domain: cookie.domain,
+        path: cookie.path,
+        secure: cookie.secure,
+        httpOnly: cookie.httpOnly,
+        expirationDate: cookie.expirationDate
+      });
+    }
+    console.log(`Seeded ${googleCookies.length} Google session cookies into workspace partition.`);
+  } catch (e) {
+    console.warn('Session seed notice:', e);
+  }
+}
+
+app.whenReady().then(async () => {
+  const sharedSession = session.fromPartition(SHARED_PARTITION);
+  sharedSession.setUserAgent(REAL_CHROME_UA);
+
+  // Match native Chrome Client Hints
+  sharedSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    const requestHeaders = { ...details.requestHeaders };
+    requestHeaders['User-Agent'] = REAL_CHROME_UA;
+    requestHeaders['Sec-CH-UA'] = '"Not(A:Brand";v="99", "Google Chrome";v="133", "Chromium";v="133"';
+    requestHeaders['Sec-CH-UA-Mobile'] = '?0';
+    requestHeaders['Sec-CH-UA-Platform'] = '"Windows"';
+    callback({ cancel: false, requestHeaders });
+  });
+
+  // Strip iframe frame-ancestors restrictions
+  sharedSession.webRequest.onHeadersReceived((details, callback) => {
+    const responseHeaders = { ...details.responseHeaders };
+    delete responseHeaders['x-frame-options'];
+    delete responseHeaders['X-Frame-Options'];
+    if (responseHeaders['content-security-policy']) {
+      const headerValues = responseHeaders['content-security-policy'];
+      responseHeaders['content-security-policy'] = headerValues.map((csp) =>
+        csp.replace(/frame-ancestors[^;]+;?/gi, '')
+      );
+    }
+    callback({ cancel: false, responseHeaders });
+  });
+
+  await seedWorkspaceSession();
+
   setupIpcHandlers();
   createWindow();
 
