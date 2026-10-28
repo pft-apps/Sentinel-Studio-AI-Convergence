@@ -1373,8 +1373,8 @@ class MultiAiHubManager {
         if (pane.serviceId === 'gemini') {
           if (isGoogleAuth && googleUser) {
             ssoHeaderBar = `
-              <div class="px-3 py-1.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100 dark:from-emerald-950/80 dark:via-teal-950/80 dark:to-emerald-900/80 border-b border-emerald-300 dark:border-emerald-700 text-xs flex items-center justify-between gap-2 shrink-0 select-none shadow-2xs">
-                <div class="flex items-center gap-2 truncate">
+              <div class="px-3 py-1.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100 dark:from-emerald-950/80 dark:via-teal-950/80 dark:to-emerald-900/80 border-b border-emerald-300 dark:border-emerald-700 text-xs flex items-center justify-between gap-2 shrink-0 select-none shadow-2xs overflow-x-auto scrollbar-thin min-w-0">
+                <div class="flex items-center gap-2 truncate shrink-0">
                   <div class="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 shadow-xs">
                     ${googleUser.picture ? `<img src="${googleUser.picture}" class="w-full h-full rounded-full object-cover" onerror="this.remove()" />` : (googleUser.name || 'G').charAt(0).toUpperCase()}
                   </div>
@@ -1396,8 +1396,8 @@ class MultiAiHubManager {
             `;
           } else {
             ssoHeaderBar = `
-              <div class="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/80 border-b border-amber-300 dark:border-amber-700 text-xs flex items-center justify-between gap-2 shrink-0 select-none">
-                <div class="flex items-center gap-2 truncate">
+              <div class="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/80 border-b border-amber-300 dark:border-amber-700 text-xs flex items-center justify-between gap-2 shrink-0 select-none overflow-x-auto scrollbar-thin min-w-0">
+                <div class="flex items-center gap-2 truncate shrink-0">
                   <span class="text-amber-600 dark:text-amber-400 font-bold">✨ Google Gemini:</span>
                   <span class="text-amber-900 dark:text-amber-200 text-[11px] truncate">Connect your Google Account for Gemini Advanced</span>
                 </div>
@@ -1411,8 +1411,8 @@ class MultiAiHubManager {
         } else if (pane.serviceId === 'chatgpt') {
           if (isGoogleAuth && googleUser) {
             ssoHeaderBar = `
-              <div class="px-3 py-1.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100 dark:from-emerald-950/80 dark:via-teal-950/80 dark:to-emerald-900/80 border-b border-emerald-300 dark:border-emerald-700 text-xs flex items-center justify-between gap-2 shrink-0 select-none shadow-2xs">
-                <div class="flex items-center gap-2 truncate">
+              <div class="px-3 py-1.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-100 dark:from-emerald-950/80 dark:via-teal-950/80 dark:to-emerald-900/80 border-b border-emerald-300 dark:border-emerald-700 text-xs flex items-center justify-between gap-2 shrink-0 select-none shadow-2xs overflow-x-auto scrollbar-thin min-w-0">
+                <div class="flex items-center gap-2 truncate shrink-0">
                   <div class="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 shadow-xs">
                     ${googleUser.picture ? `<img src="${googleUser.picture}" class="w-full h-full rounded-full object-cover" onerror="this.remove()" />` : (googleUser.name || 'G').charAt(0).toUpperCase()}
                   </div>
@@ -1434,8 +1434,8 @@ class MultiAiHubManager {
             `;
           } else {
             ssoHeaderBar = `
-              <div class="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 border-b border-emerald-200 dark:border-emerald-800 text-xs flex items-center justify-between gap-2 shrink-0 select-none">
-                <div class="flex items-center gap-2 truncate">
+              <div class="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 border-b border-emerald-200 dark:border-emerald-800 text-xs flex items-center justify-between gap-2 shrink-0 select-none overflow-x-auto scrollbar-thin min-w-0">
+                <div class="flex items-center gap-2 truncate shrink-0">
                   <span class="text-emerald-700 dark:text-emerald-300 font-bold">🟢 OpenAI ChatGPT:</span>
                   <span class="text-emerald-900 dark:text-emerald-200 text-[11px] truncate">Use Google Account for ChatGPT Plus & Team SSO</span>
                 </div>
@@ -1514,18 +1514,18 @@ class MultiAiHubManager {
           >
             ${ssoHeaderBar}
             <!-- DEDICATED PANE BROWSER TOP NAVIGATION & CONTROLS (NO DROPDOWN) -->
-            <div class="p-2 border-b border-gray-200 dark:border-intel-border bg-gray-50 dark:bg-[#25262b] flex items-center justify-between gap-1.5 shrink-0">
+            <div class="p-2 border-b border-gray-200 dark:border-intel-border bg-gray-50 dark:bg-[#25262b] flex items-center justify-between gap-1.5 shrink-0 overflow-x-auto scrollbar-thin min-w-0">
               <!-- Left: Dedicated AI Branding & Direct Sign In Button -->
-              <div class="flex items-center gap-2 shrink-0">
+              <div class="flex items-center gap-1.5 shrink-0">
                 <span class="text-base select-none">${service.icon}</span>
-                <span class="font-extrabold text-xs text-gray-900 dark:text-white truncate">${service.name}</span>
+                <span class="font-extrabold text-xs text-gray-900 dark:text-white truncate max-w-[120px]">${service.name}</span>
                 <span class="hidden sm:inline-block text-[9px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50 font-mono font-bold shrink-0">
                   ${service.badge}
                 </span>
                 <button
                   type="button"
                   onclick="if(window.sentinelDesktop && window.sentinelDesktop.triggerDirectLogin) { window.sentinelDesktop.triggerDirectLogin('${pane.serviceId}'); } else if(window.googleAuth) { window.googleAuth.signIn(); }"
-                  class="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1 shadow-2xs shrink-0"
+                  class="px-2 py-0.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1 shadow-2xs shrink-0"
                   title="Sign In via Seamless Browser Session Relay"
                 >
                   <span>🔑</span><span class="hidden sm:inline">Sign In</span>
@@ -1533,11 +1533,11 @@ class MultiAiHubManager {
               </div>
 
               <!-- Center: Nav buttons & Address Bar -->
-              <div class="flex items-center gap-1 flex-1 min-w-0">
-                <button onclick="window.multiAiHub.reloadPane('${pane.id}')" class="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-intel-800 text-gray-600 dark:text-slate-300 transition cursor-pointer" title="Reload Browser">
+              <div class="flex items-center gap-1 flex-1 min-w-[120px]">
+                <button onclick="window.multiAiHub.reloadPane('${pane.id}')" class="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-intel-800 text-gray-600 dark:text-slate-300 transition cursor-pointer shrink-0" title="Reload Browser">
                   🔄
                 </button>
-                <button onclick="window.multiAiHub.goHome('${pane.id}')" class="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-intel-800 text-gray-600 dark:text-slate-300 transition cursor-pointer" title="Go to Default URL">
+                <button onclick="window.multiAiHub.goHome('${pane.id}')" class="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-intel-800 text-gray-600 dark:text-slate-300 transition cursor-pointer shrink-0" title="Go to Default URL">
                   🏠
                 </button>
                 <input
@@ -1546,7 +1546,7 @@ class MultiAiHubManager {
                   value="${pane.currentUrl}"
                   onkeydown="if(event.key==='Enter') window.multiAiHub.navigatePane('${pane.id}', this.value)"
                   placeholder="https://..."
-                  class="flex-1 min-w-0 bg-white dark:bg-intel-900 border border-gray-300 dark:border-intel-border text-gray-900 dark:text-slate-200 text-[11px] px-2.5 py-1 rounded-lg focus:outline-none focus:border-purple-500 font-mono truncate"
+                  class="flex-1 min-w-[80px] bg-white dark:bg-intel-900 border border-gray-300 dark:border-intel-border text-gray-900 dark:text-slate-200 text-[11px] px-2 py-0.5 rounded-lg focus:outline-none focus:border-purple-500 font-mono truncate"
                   title="Press Enter to navigate"
                 />
               </div>
@@ -1554,19 +1554,19 @@ class MultiAiHubManager {
               <!-- Right: Zoom, Popout, Maximize -->
               <div class="flex items-center gap-1 shrink-0">
                 <!-- Zoom Controls -->
-                <div class="hidden sm:flex items-center bg-gray-200/70 dark:bg-intel-850 rounded-lg p-0.5 border border-gray-300 dark:border-intel-border text-[10px]">
+                <div class="hidden sm:flex items-center bg-gray-200/70 dark:bg-intel-850 rounded-lg p-0.5 border border-gray-300 dark:border-intel-border text-[10px] shrink-0">
                   <button onclick="window.multiAiHub.zoomPane('${pane.id}', -0.1)" class="px-1.5 py-0.5 hover:bg-gray-300 dark:hover:bg-intel-800 rounded text-gray-700 dark:text-slate-300 cursor-pointer" title="Zoom Out">-</button>
                   <span id="zoom_badge_${pane.id}" class="px-1 font-mono font-bold text-gray-700 dark:text-slate-300">${Math.round(pane.zoomLevel * 100)}%</span>
                   <button onclick="window.multiAiHub.zoomPane('${pane.id}', 0.1)" class="px-1.5 py-0.5 hover:bg-gray-300 dark:hover:bg-intel-800 rounded text-gray-700 dark:text-slate-300 cursor-pointer" title="Zoom In">+</button>
                 </div>
 
                 <!-- Launch Connected Companion Window -->
-                <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="p-1 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-950/60 text-purple-700 dark:text-purple-300 transition cursor-pointer" title="Popout into dedicated companion window for full Google/Microsoft logins">
+                <button onclick="window.multiAiHub.openCompanion('${pane.id}')" class="p-1 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-950/60 text-purple-700 dark:text-purple-300 transition cursor-pointer shrink-0" title="Popout into dedicated companion window for full Google/Microsoft logins">
                   ↗️
                 </button>
 
                 <!-- Maximize / Restore -->
-                <button onclick="window.multiAiHub.toggleMaximize('${pane.id}')" class="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-intel-800 text-gray-600 dark:text-slate-300 transition cursor-pointer" title="${pane.isMaximized ? 'Restore View' : 'Maximize Pane'}">
+                <button onclick="window.multiAiHub.toggleMaximize('${pane.id}')" class="p-1 rounded-lg hover:bg-gray-200 dark:hover:bg-intel-800 text-gray-600 dark:text-slate-300 transition cursor-pointer shrink-0" title="${pane.isMaximized ? 'Restore View' : 'Maximize Pane'}">
                   ${pane.isMaximized ? '🗗' : '⛶'}
                 </button>
               </div>
@@ -1724,6 +1724,19 @@ export function syncNativeViewBounds(): void {
     return;
   }
 
+  // Foreground Modal Visibility Guard: If ANY modal window or settings overlay is open,
+  // temporarily hide native AI WebContentsViews so modals render cleanly in the foreground.
+  const isAnyModalOpen = Array.from(
+    document.querySelectorAll<HTMLElement>(
+      '#settingsModal, #aiConferenceModal, #privacyModal, #themePickerModal, #backupSuiteModal, #gemModal, #folderModal, #moveSessionModal, #renameChatModal, #editMemoryRuleModal, #exportStyleModal, #snapshotRestoreModal, #activationOverlay, .modal-overlay'
+    )
+  ).some((el) => !el.classList.contains('hidden') && el.style.display !== 'none');
+
+  if (isAnyModalOpen) {
+    desktop.syncViewBounds({ layout: 'hidden', slots: [] });
+    return;
+  }
+
   const visibleSlots: Array<{ engineKey: string; bounds: { x: number; y: number; width: number; height: number } }> = [];
   const activeSlotElements = document.querySelectorAll<HTMLElement>('.native-view-column:not(.hidden)');
 
@@ -1750,6 +1763,19 @@ export function syncNativeViewBounds(): void {
   desktop.syncViewBounds({
     layout: activeSplitMode,
     slots: visibleSlots,
+  });
+}
+
+// Automatic Modal Observer: Triggers view bounds re-calculation whenever any modal opens or closes
+if (typeof window !== 'undefined' && typeof MutationObserver !== 'undefined') {
+  window.addEventListener('DOMContentLoaded', () => {
+    const modalObserver = new MutationObserver(() => syncNativeViewBounds());
+    const targetModals = document.querySelectorAll(
+      '#settingsModal, #aiConferenceModal, #privacyModal, #themePickerModal, #backupSuiteModal, #gemModal, #folderModal, #moveSessionModal, #renameChatModal, #editMemoryRuleModal, #exportStyleModal, #snapshotRestoreModal, #activationOverlay'
+    );
+    targetModals.forEach((m) => {
+      modalObserver.observe(m, { attributes: true, attributeFilter: ['class', 'style'] });
+    });
   });
 }
 

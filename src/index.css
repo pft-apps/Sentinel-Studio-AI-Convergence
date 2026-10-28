@@ -95,6 +95,54 @@ html:not(.dark) ::-webkit-scrollbar-track { background: #E7EAEF; }
 html:not(.dark) ::-webkit-scrollbar-thumb { background: #003886; border-radius: 4px; }
 html:not(.dark) ::-webkit-scrollbar-thumb:hover { background: #06234D; }
 
+/* Dynamic Scrollbars & Auto-Overflow Engine for Headers & Containers */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-primary, #00C4E7) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--accent-primary, #00C4E7);
+  border-radius: 9999px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-secondary, #003886);
+}
+
+.auto-scroll-x {
+  overflow-x: auto !important;
+  max-width: 100%;
+}
+.auto-scroll-y {
+  overflow-y: auto !important;
+  max-height: 100%;
+}
+.auto-scroll-both {
+  overflow: auto !important;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Ensure main application header, toolbars, drawers, and modal containers automatically display scrollbars on element overflow */
+header,
+#multiAiHeaderBar,
+#multiAiFocusBar,
+#multiAiPromptPresetBar,
+#aiConferenceModalBox > div:first-child,
+#workDeskHeader,
+.drawer-header,
+.modal-header,
+.toolbar-container {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
 /* ==========================================================================
    THEME PALETTE VARIABLES & ACCESSIBILITY GUARANTEES
    ========================================================================== */
